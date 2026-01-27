@@ -17,11 +17,19 @@ final class Message {
 
     var conversation: Conversation?
 
-    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil) {
+    @Relationship(deleteRule: .cascade, inverse: \Attachment.message)
+    var attachments: [Attachment] = []
+
+    init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil, attachments: [Attachment] = []) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.modelUsed = modelUsed
+        self.attachments = attachments
+    }
+
+    var hasAttachments: Bool {
+        !attachments.isEmpty
     }
 }

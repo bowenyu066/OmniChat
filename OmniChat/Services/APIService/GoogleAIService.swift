@@ -18,69 +18,49 @@ final class GoogleAIService: APIServiceProtocol {
 
     func sendMessage(messages: [ChatMessage], model: AIModel) async throws -> String {
         guard let apiKey = keychainService.getAPIKey(for: .google), !apiKey.isEmpty else {
-            print("❌ [Gemini] No API key found")
             throw APIServiceError.invalidAPIKey
         }
 
         let request = try buildRequest(messages: messages, model: model, apiKey: apiKey, stream: false)
-        print("🌐 [Gemini] Sending request to: \(request.url?.absoluteString ?? "unknown")")
-        print("📝 [Gemini] Request headers: \(request.allHTTPHeaderFields ?? [:])")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("❌ [Gemini] Invalid HTTP response")
             throw APIServiceError.invalidResponse
         }
 
-        print("📊 [Gemini] Status code: \(httpResponse.statusCode)")
-
         if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            print("❌ [Gemini] Authentication failed")
             throw APIServiceError.invalidAPIKey
         }
 
         if httpResponse.statusCode == 429 {
-            print("❌ [Gemini] Rate limited")
             throw APIServiceError.rateLimited
         }
 
         guard httpResponse.statusCode == 200 else {
-            let responseString = String(data: data, encoding: .utf8) ?? "unknown"
-            print("❌ [Gemini] Error response: \(responseString)")
             if let errorResponse = try? JSONDecoder().decode(GeminiErrorResponse.self, from: data) {
                 throw APIServiceError.serverError(statusCode: httpResponse.statusCode, message: errorResponse.error.message)
             }
             throw APIServiceError.serverError(statusCode: httpResponse.statusCode, message: nil)
         }
 
-        let responseString = String(data: data, encoding: .utf8) ?? "unknown"
-        print("📥 [Gemini] Response: \(responseString.prefix(500))...")
-
         do {
             let geminiResponse = try JSONDecoder().decode(GeminiResponse.self, from: data)
-            print("✅ [Gemini] Decoded response successfully")
 
-            // Extract text from candidates
             guard let candidate = geminiResponse.candidates.first else {
-                print("❌ [Gemini] No candidates in response")
                 throw APIServiceError.invalidResponse
             }
 
             guard let content = candidate.content else {
-                print("❌ [Gemini] No content in candidate")
                 throw APIServiceError.invalidResponse
             }
 
             guard let part = content.parts.first else {
-                print("❌ [Gemini] No parts in content")
                 throw APIServiceError.invalidResponse
             }
 
-            print("✅ [Gemini] Extracted text: \(part.text.prefix(100))...")
             return part.text
         } catch {
-            print("❌ [Gemini] Decoding error: \(error)")
             throw APIServiceError.decodingError(error)
         }
     }
@@ -90,52 +70,38 @@ final class GoogleAIService: APIServiceProtocol {
             Task { [self] in
                 do {
                     guard let apiKey = self.keychainService.getAPIKey(for: AIProvider.google), !apiKey.isEmpty else {
-                        print("❌ [Gemini Stream] No API key found")
                         continuation.finish(throwing: APIServiceError.invalidAPIKey)
                         return
                     }
 
                     let request = try self.buildRequest(messages: messages, model: model, apiKey: apiKey, stream: true)
-                    print("🌐 [Gemini Stream] Sending request to: \(request.url?.absoluteString ?? "unknown")")
 
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
-                        print("❌ [Gemini Stream] Invalid HTTP response")
                         continuation.finish(throwing: APIServiceError.invalidResponse)
                         return
                     }
 
-                    print("📊 [Gemini Stream] Status code: \(httpResponse.statusCode)")
-
                     if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                        print("❌ [Gemini Stream] Authentication failed")
                         continuation.finish(throwing: APIServiceError.invalidAPIKey)
                         return
                     }
 
                     if httpResponse.statusCode == 429 {
-                        print("❌ [Gemini Stream] Rate limited")
                         continuation.finish(throwing: APIServiceError.rateLimited)
                         return
                     }
 
                     guard httpResponse.statusCode == 200 else {
-                        print("❌ [Gemini Stream] Error status: \(httpResponse.statusCode)")
                         continuation.finish(throwing: APIServiceError.serverError(statusCode: httpResponse.statusCode, message: nil))
                         return
                     }
 
-                    print("✅ [Gemini Stream] Connected, reading stream...")
-
                     // Google's streaming format is newline-delimited JSON
                     var buffer = ""
-                    var lineCount = 0
 
                     for try await line in bytes.lines {
-                        lineCount += 1
-                        print("📨 [Gemini Stream] Line \(lineCount): \(line.prefix(100))...")
-
                         // Skip empty lines
                         if line.trimmingCharacters(in: .whitespaces).isEmpty {
                             continue
@@ -145,12 +111,10 @@ final class GoogleAIService: APIServiceProtocol {
                         var jsonLine = line
                         if line.hasPrefix("data: ") {
                             jsonLine = String(line.dropFirst(6))
-                            print("📝 [Gemini Stream] Extracted data: \(jsonLine.prefix(100))...")
                         }
 
                         // Skip [DONE] marker
                         if jsonLine == "[DONE]" {
-                            print("✅ [Gemini Stream] Received [DONE] marker")
                             break
                         }
 
@@ -161,32 +125,25 @@ final class GoogleAIService: APIServiceProtocol {
                         if let data = buffer.data(using: .utf8) {
                             do {
                                 let streamResponse = try JSONDecoder().decode(GeminiStreamResponse.self, from: data)
-                                print("✅ [Gemini Stream] Decoded chunk successfully")
 
                                 // Extract text from the response
                                 if let candidate = streamResponse.candidates?.first,
                                    let part = candidate.content?.parts.first {
-                                    print("📤 [Gemini Stream] Yielding: \(part.text.prefix(50))...")
                                     continuation.yield(part.text)
-                                } else {
-                                    print("⚠️ [Gemini Stream] No text in chunk")
                                 }
 
                                 // Clear buffer on successful parse
                                 buffer = ""
                             } catch {
                                 // JSON might be incomplete, continue buffering
-                                print("⚠️ [Gemini Stream] Parse error (buffering): \(error)")
                                 // But if buffer is getting too large, try alternative parsing
                                 if buffer.count > 10000 {
-                                    print("❌ [Gemini Stream] Buffer too large, clearing")
                                     buffer = ""
                                 }
                             }
                         }
                     }
 
-                    print("✅ [Gemini Stream] Stream finished, total lines: \(lineCount)")
                     continuation.finish()
 
                 } catch {
@@ -262,11 +219,36 @@ final class GoogleAIService: APIServiceProtocol {
                 role = "user"
             }
 
+            // Build parts array
+            var parts: [[String: Any]] = []
+
+            for content in message.contents {
+                switch content {
+                case .text(let text):
+                    parts.append(["text": text])
+                case .image(let data, let mimeType):
+                    let base64 = data.base64EncodedString()
+                    parts.append([
+                        "inlineData": [
+                            "mimeType": mimeType,
+                            "data": base64
+                        ]
+                    ])
+                case .pdf(let data):
+                    // Gemini supports PDF via inlineData
+                    let base64 = data.base64EncodedString()
+                    parts.append([
+                        "inlineData": [
+                            "mimeType": "application/pdf",
+                            "data": base64
+                        ]
+                    ])
+                }
+            }
+
             contents.append([
                 "role": role,
-                "parts": [
-                    ["text": message.content]
-                ]
+                "parts": parts
             ])
         }
 

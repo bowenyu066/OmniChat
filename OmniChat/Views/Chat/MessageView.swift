@@ -26,17 +26,28 @@ struct MessageView: View {
                         .foregroundStyle(.tertiary)
                 }
 
+                // Attachments (if any)
+                if message.hasAttachments {
+                    VStack(alignment: isUser ? .trailing : .leading, spacing: 8) {
+                        ForEach(message.attachments, id: \.id) { attachment in
+                            AttachmentDisplayView(attachment: attachment)
+                        }
+                    }
+                }
+
                 // Message content
                 if isUser {
-                    // User messages: plain text with bubble
-                    Text(message.content)
-                        .textSelection(.enabled)
-                        .font(.body)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(userMessageBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .foregroundStyle(.white)
+                    // User messages: plain text with bubble (only if there's text)
+                    if !message.content.isEmpty {
+                        Text(message.content)
+                            .textSelection(.enabled)
+                            .font(.body)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(userMessageBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                            .foregroundStyle(.white)
+                    }
                 } else {
                     // Assistant messages: markdown rendering
                     MarkdownView(content: message.content)

@@ -1,18 +1,73 @@
 import Foundation
 
-/// Represents a message in the conversation format expected by AI APIs
-struct ChatMessage: Codable {
-    let role: String
-    let content: String
+/// Represents content types in a multimodal message
+enum ChatMessageContent {
+    case text(String)
+    case image(data: Data, mimeType: String)
+    case pdf(data: Data)
+}
 
+/// Represents a message in the conversation format expected by AI APIs
+struct ChatMessage {
+    let role: String
+    let contents: [ChatMessageContent]
+
+    /// Text-only convenience initializer
     init(role: MessageRole, content: String) {
         self.role = role.rawValue
-        self.content = content
+        self.contents = [.text(content)]
     }
 
+    /// Multimodal initializer
+    init(role: MessageRole, contents: [ChatMessageContent]) {
+        self.role = role.rawValue
+        self.contents = contents
+    }
+
+    /// Initialize from Message model with attachments
     init(from message: Message) {
         self.role = message.role.rawValue
-        self.content = message.content
+
+        var contents: [ChatMessageContent] = []
+
+        // Add attachments first
+        for attachment in message.attachments {
+            switch attachment.type {
+            case .image:
+                contents.append(.image(data: attachment.data, mimeType: attachment.mimeType))
+            case .pdf:
+                contents.append(.pdf(data: attachment.data))
+            }
+        }
+
+        // Add text content
+        if !message.content.isEmpty {
+            contents.append(.text(message.content))
+        }
+
+        self.contents = contents
+    }
+
+    /// Convenience property for text-only messages
+    var textContent: String? {
+        for content in contents {
+            if case .text(let text) = content {
+                return text
+            }
+        }
+        return nil
+    }
+
+    /// Check if message has any attachments
+    var hasAttachments: Bool {
+        contents.contains { content in
+            switch content {
+            case .text:
+                return false
+            case .image, .pdf:
+                return true
+            }
+        }
     }
 }
 

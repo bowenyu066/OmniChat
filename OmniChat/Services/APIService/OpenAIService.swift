@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 
 /// OpenAI API service implementation
 final class OpenAIService: APIServiceProtocol {
@@ -97,16 +98,94 @@ final class OpenAIService: APIServiceProtocol {
         // Add reasoning_effort for GPT-5.2 (default to "medium" for balanced performance)
         let reasoningEffort: String? = (model.rawValue == "gpt-5.2") ? "medium" : nil
 
-        let body = OpenAIRequest(
-            model: model.rawValue,
-            messages: messages,
-            stream: stream,
-            reasoning_effort: reasoningEffort
-        )
+        // Convert messages to OpenAI format
+        let openAIMessages = messages.map { convertToOpenAIFormat($0) }
 
-        request.httpBody = try JSONEncoder().encode(body)
+        var body: [String: Any] = [
+            "model": model.rawValue,
+            "messages": openAIMessages,
+            "stream": stream
+        ]
+
+        if let effort = reasoningEffort {
+            body["reasoning_effort"] = effort
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return request
+    }
+
+    private func convertToOpenAIFormat(_ message: ChatMessage) -> [String: Any] {
+        // Check if message has attachments
+        if message.hasAttachments {
+            var content: [[String: Any]] = []
+
+            for part in message.contents {
+                switch part {
+                case .text(let text):
+                    content.append([
+                        "type": "text",
+                        "text": text
+                    ])
+                case .image(let data, let mimeType):
+                    let base64 = data.base64EncodedString()
+                    content.append([
+                        "type": "image_url",
+                        "image_url": [
+                            "url": "data:\(mimeType);base64,\(base64)"
+                        ]
+                    ])
+                case .pdf(let data):
+                    // Convert PDF pages to images (max 5 pages)
+                    let images = convertPDFToImages(data: data, maxPages: 5)
+                    for imageData in images {
+                        let base64 = imageData.base64EncodedString()
+                        content.append([
+                            "type": "image_url",
+                            "image_url": [
+                                "url": "data:image/png;base64,\(base64)"
+                            ]
+                        ])
+                    }
+                }
+            }
+
+            return [
+                "role": message.role,
+                "content": content
+            ]
+        } else {
+            // Text-only message
+            return [
+                "role": message.role,
+                "content": message.textContent ?? ""
+            ]
+        }
+    }
+
+    private func convertPDFToImages(data: Data, maxPages: Int) -> [Data] {
+        guard let pdfDocument = PDFDocument(data: data) else { return [] }
+
+        var images: [Data] = []
+        let pageCount = min(pdfDocument.pageCount, maxPages)
+
+        for i in 0..<pageCount {
+            guard let page = pdfDocument.page(at: i) else { continue }
+
+            let pageRect = page.bounds(for: .mediaBox)
+            let scale: CGFloat = 2.0 // 2x for better quality
+            let size = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
+
+            let thumbnail = page.thumbnail(of: size, for: .mediaBox)
+            if let tiffData = thumbnail.tiffRepresentation,
+               let bitmapRep = NSBitmapImageRep(data: tiffData),
+               let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+                images.append(pngData)
+            }
+        }
+
+        return images
     }
 
     private func validateResponse(_ response: URLResponse, data: Data) throws {
@@ -131,28 +210,7 @@ final class OpenAIService: APIServiceProtocol {
     }
 }
 
-// MARK: - Request/Response Models
-
-private struct OpenAIRequest: Encodable {
-    let model: String
-    let messages: [ChatMessage]
-    let stream: Bool
-    let reasoning_effort: String?
-
-    enum CodingKeys: String, CodingKey {
-        case model, messages, stream, reasoning_effort
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(model, forKey: .model)
-        try container.encode(messages, forKey: .messages)
-        try container.encode(stream, forKey: .stream)
-        if let reasoning_effort = reasoning_effort {
-            try container.encode(reasoning_effort, forKey: .reasoning_effort)
-        }
-    }
-}
+// MARK: - Response Models
 
 private struct OpenAICompletionResponse: Decodable {
     let choices: [Choice]

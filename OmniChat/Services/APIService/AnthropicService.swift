@@ -6,7 +6,7 @@ final class AnthropicService: APIServiceProtocol {
 
     private let keychainService: KeychainService
     private let baseURL = "https://api.anthropic.com/v1/messages"
-    private let apiVersion = "2023-06-01"
+    private let apiVersion = "2024-10-22"  // Updated for vision support
 
     init(keychainService: KeychainService = .shared) {
         self.keychainService = keychainService
@@ -151,12 +151,9 @@ final class AnthropicService: APIServiceProtocol {
 
         for message in messages {
             if message.role == "system" {
-                systemPrompt = message.content
+                systemPrompt = message.textContent
             } else {
-                anthropicMessages.append([
-                    "role": message.role,
-                    "content": message.content
-                ])
+                anthropicMessages.append(convertToAnthropicFormat(message))
             }
         }
 
@@ -174,6 +171,55 @@ final class AnthropicService: APIServiceProtocol {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return request
+    }
+
+    private func convertToAnthropicFormat(_ message: ChatMessage) -> [String: Any] {
+        // Check if message has attachments
+        if message.hasAttachments {
+            var content: [[String: Any]] = []
+
+            for part in message.contents {
+                switch part {
+                case .text(let text):
+                    content.append([
+                        "type": "text",
+                        "text": text
+                    ])
+                case .image(let data, let mimeType):
+                    let base64 = data.base64EncodedString()
+                    content.append([
+                        "type": "image",
+                        "source": [
+                            "type": "base64",
+                            "media_type": mimeType,
+                            "data": base64
+                        ]
+                    ])
+                case .pdf(let data):
+                    // Claude supports native PDF via document type
+                    let base64 = data.base64EncodedString()
+                    content.append([
+                        "type": "document",
+                        "source": [
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": base64
+                        ]
+                    ])
+                }
+            }
+
+            return [
+                "role": message.role,
+                "content": content
+            ]
+        } else {
+            // Text-only message
+            return [
+                "role": message.role,
+                "content": message.textContent ?? ""
+            ]
+        }
     }
 }
 

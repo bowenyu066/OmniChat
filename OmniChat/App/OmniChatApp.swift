@@ -7,6 +7,7 @@ struct OmniChatApp: App {
         let schema = Schema([
             Conversation.self,
             Message.self,
+            Attachment.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

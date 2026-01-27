@@ -7,6 +7,7 @@ struct ChatView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var inputText = ""
+    @State private var pendingAttachments: [PendingAttachment] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var currentStreamingMessage: Message?
@@ -78,6 +79,7 @@ struct ChatView: View {
             // Input area
             MessageInputView(
                 text: $inputText,
+                pendingAttachments: $pendingAttachments,
                 isLoading: isLoading,
                 onSend: sendMessage
             )
@@ -161,9 +163,15 @@ struct ChatView: View {
     }
 
     private func sendMessage() {
-        guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasAttachments = !pendingAttachments.isEmpty
 
-        let userMessage = Message(role: .user, content: inputText)
+        guard hasText || hasAttachments else { return }
+
+        // Convert pending attachments to Attachment models
+        let attachments = pendingAttachments.map { $0.toAttachment() }
+
+        let userMessage = Message(role: .user, content: inputText, attachments: attachments)
         conversation.messages.append(userMessage)
         conversation.updatedAt = Date()
 
@@ -173,6 +181,7 @@ struct ChatView: View {
         }
 
         inputText = ""
+        pendingAttachments = []
         errorMessage = nil
         isLoading = true
 

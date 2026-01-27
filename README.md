@@ -5,6 +5,7 @@ A native macOS SwiftUI application that unifies ChatGPT, Claude, and Gemini APIs
 ## Features
 
 - **Multiple AI Providers**: Seamlessly switch between OpenAI (ChatGPT), Anthropic (Claude), and Google (Gemini)
+- **Multimodal Support**: Attach images and PDFs to your messages with drag-and-drop, paste, or file picker
 - **Local Chat History**: All conversations stored securely locally using SwiftData
 - **Streaming Responses**: Real-time message streaming for a responsive user experience
 - **Markdown Rendering**: Full markdown support with syntax-highlighted code blocks
@@ -53,6 +54,8 @@ open OmniChat.xcodeproj
 | ⌘⌃S | Toggle Sidebar |
 | ⌘L | Focus Message Input |
 | ⌘↩ | Send Message |
+| ⌘⇧A | Add Attachment |
+| ⌘V | Paste Image |
 | ⌘⇧⌫ | Clear Conversation |
 | ⌘, | Settings |
 
@@ -87,6 +90,7 @@ OmniChat/
 ├── Models/
 │   ├── Conversation.swift          # Chat conversation model
 │   ├── Message.swift               # Individual message model
+│   ├── Attachment.swift            # Image/PDF attachment model
 │   └── APIProvider.swift           # Provider configuration
 ├── Services/
 │   ├── KeychainService.swift       # Secure API key storage
@@ -109,9 +113,11 @@ OmniChat/
     │   ├── SettingsView.swift      # Settings window
     │   └── APIKeyRow.swift         # API key input
     └── Components/
-        ├── MarkdownView.swift      # Markdown renderer
-        ├── CodeBlockView.swift     # Code block with copy button
-        └── LaTeXView.swift         # LaTeX formula renderer
+        ├── MarkdownView.swift          # Markdown renderer
+        ├── CodeBlockView.swift         # Code block with copy button
+        ├── LaTeXView.swift             # LaTeX formula renderer
+        ├── AttachmentPreviewView.swift # Input attachment preview
+        └── AttachmentDisplayView.swift # Message attachment display
 ```
 
 ### Data Model
@@ -129,6 +135,15 @@ OmniChat/
 - `content`: String
 - `timestamp`: Date
 - `modelUsed`: String? (e.g., "gpt-5.2")
+- `attachments`: [Attachment]
+
+**Attachment** (SwiftData Model)
+- `id`: UUID
+- `type`: AttachmentType (image/pdf)
+- `mimeType`: String
+- `data`: Data
+- `filename`: String?
+- `createdAt`: Date
 
 ## Implementation Details
 
@@ -137,8 +152,26 @@ OmniChat/
 All services implement streaming responses using `AsyncThrowingStream<String, Error>` for real-time message delivery.
 
 - **OpenAI**: Server-Sent Events (SSE) with `data:` prefixed JSON, reasoning_effort parameter for GPT-5.2
-- **Anthropic**: SSE with `content_block_delta` events, API version 2023-06-01
+- **Anthropic**: SSE with `content_block_delta` events, API version 2024-10-22 (multimodal support)
 - **Google**: Server-Sent Events with `?alt=sse` parameter, API key in `x-goog-api-key` header, thinkingConfig support for Gemini 3
+
+### Multimodal Support
+
+All three providers support image and PDF attachments with provider-specific implementations:
+
+- **OpenAI**: Images sent as base64-encoded `image_url` content blocks, PDFs converted to images (max 5 pages)
+- **Anthropic**: Native support for images via `image` blocks and PDFs via `document` blocks (requires API version 2024-10-22)
+- **Google Gemini**: Images and PDFs sent via `inlineData` parts with appropriate MIME types
+
+**Supported file types:**
+- Images: JPEG, PNG, GIF, WebP
+- Documents: PDF
+- Maximum file size: 20MB
+
+**Input methods:**
+- File picker (⌘⇧A)
+- Drag-and-drop onto input area
+- Paste (⌘V) for clipboard images
 
 ### Security
 
@@ -170,6 +203,7 @@ Tests can be added in the `OmniChatTests` directory (currently empty).
 - Conversations are not synced across devices
 - No message search functionality (Phase 8+ feature)
 - No custom prompt templates (future enhancement)
+- PDF attachments converted to images for OpenAI (max 5 pages)
 
 ## Future Enhancements
 
@@ -178,6 +212,7 @@ Tests can be added in the `OmniChatTests` directory (currently empty).
 - [ ] Custom system prompts
 - [ ] Voice input/output
 - [ ] Image generation support
+- [ ] Video file attachments
 - [ ] Conversation folders/organization
 - [ ] Dark mode refinements
 - [ ] Export to PDF/Markdown
@@ -207,13 +242,21 @@ For API-specific issues, consult the provider's documentation:
 
 ## Latest Release
 
-### v0.1.2 (2026-01-27) - LaTeX & UI Improvements
-
-**Fixed:**
-- LaTeX formulas now show horizontal scrollbar when window is too narrow
-- Assistant messages now expand to fill available width on wider windows
+### v0.1.3 (2026-01-27) - Multimodal Support
 
 **Added:**
-- Provider-specific system prompts for consistent LaTeX formatting
+- Image and PDF attachment support for all providers (ChatGPT, Claude, Gemini)
+- File picker with ⌘⇧A shortcut
+- Drag-and-drop file attachment to input area
+- Paste (⌘V) for clipboard images
+- Attachment preview cards with remove button
+- Click-to-expand image viewer with zoom controls
+- PDF viewer with PDFKit integration and page count display
+- Save/copy context menus for attachments
+- 20MB file size limit with user-friendly error messages
+
+**Changed:**
+- Updated Anthropic API version to 2024-10-22 for multimodal support
+- Message model now includes attachments relationship with cascade delete
 
 See [CHANGELOG.md](CHANGELOG.md) for full release history.

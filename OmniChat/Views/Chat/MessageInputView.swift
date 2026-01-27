@@ -1,89 +1,220 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import AppKit
 
 struct MessageInputView: View {
     @Binding var text: String
+    @Binding var pendingAttachments: [PendingAttachment]
     let isLoading: Bool
     let onSend: () -> Void
 
     @FocusState private var isFocused: Bool
-    
-    // 配置项：最大显示多少行，超过则显示滚动条
+    @State private var isDropTargeted = false
+    @State private var attachmentError: String?
+
     private let maxLineLimit: Int = 8
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            
-            // --- 核心修改区域 Start ---
-            TextField("Message...", text: $text, axis: .vertical)
-                // 关键点 1: 启用垂直轴向，允许换行
-                .lineLimit(1...maxLineLimit)
-                // 关键点 2: 去除 macOS 默认的输入框样式（光晕/边框），完全自定义
-                .textFieldStyle(.plain)
-                .font(.body)
-                // 关键点 3: 通过 Padding 撑起圆角矩形，文字天然居中
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(isFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2), lineWidth: 1)
-                )
-                .focused($isFocused)
-            // --- 核心修改区域 End ---
+        VStack(spacing: 8) {
+            // Attachment previews
+            AttachmentPreviewRow(attachments: $pendingAttachments)
 
-            // Send button
-            Button(action: {
-                if canSend {
-                    onSend()
+            // Error message
+            if let error = attachmentError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Dismiss") {
+                        attachmentError = nil
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
                 }
-            }) {
-                Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(canSend || isLoading ? Color.accentColor : Color.secondary.opacity(0.5))
-                    .contentTransition(.symbolEffect(.replace))
+                .padding(.horizontal, 8)
             }
-            .buttonStyle(.plain)
-            .disabled(!canSend && !isLoading)
-            .keyboardShortcut(.return, modifiers: .command) // Command + Enter 发送
-            .help(isLoading ? "Stop generating" : "Send message (⌘↩)")
+
+            // Input row
+            HStack(alignment: .bottom, spacing: 12) {
+                // Attachment button
+                Button(action: openFilePicker) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Add image or PDF (⌘⇧A)")
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+
+                // Text input
+                TextField("Message...", text: $text, axis: .vertical)
+                    .lineLimit(1...maxLineLimit)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(
+                                isDropTargeted ? Color.accentColor : (isFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2)),
+                                lineWidth: isDropTargeted ? 2 : 1
+                            )
+                    )
+                    .focused($isFocused)
+
+                // Send button
+                Button(action: {
+                    if canSend {
+                        onSend()
+                    }
+                }) {
+                    Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(canSend || isLoading ? Color.accentColor : Color.secondary.opacity(0.5))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend && !isLoading)
+                .keyboardShortcut(.return, modifiers: .command)
+                .help(isLoading ? "Stop generating" : "Send message (⌘↩)")
+            }
         }
         .onAppear {
             isFocused = true
         }
-        // 保持此通知监听，以便外部可以重新聚焦输入框
         .onReceive(NotificationCenter.default.publisher(for: .focusMessageInput)) { _ in
             isFocused = true
         }
+        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: handleDrop)
+        .onPasteCommand(of: [.image, .fileURL], perform: handlePaste)
     }
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
+        let hasText = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasAttachments = !pendingAttachments.isEmpty
+        return (hasText || hasAttachments) && !isLoading
+    }
+
+    private func openFilePicker() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [
+            .jpeg, .png, .gif, .webP, .pdf
+        ]
+        panel.message = "Select images or PDFs to attach"
+
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                addAttachment(from: url)
+            }
+        }
+    }
+
+    private func addAttachment(from url: URL) {
+        do {
+            let attachment = try PendingAttachment.from(url: url)
+            withAnimation(.easeIn(duration: 0.2)) {
+                pendingAttachments.append(attachment)
+            }
+            attachmentError = nil
+        } catch {
+            attachmentError = error.localizedDescription
+        }
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                    if let data = item as? Data,
+                       let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        DispatchQueue.main.async {
+                            addAttachment(from: url)
+                        }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let data = data {
+                        DispatchQueue.main.async {
+                            do {
+                                let attachment = try PendingAttachment.from(imageData: data)
+                                withAnimation(.easeIn(duration: 0.2)) {
+                                    pendingAttachments.append(attachment)
+                                }
+                                attachmentError = nil
+                            } catch {
+                                attachmentError = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private func handlePaste(providers: [NSItemProvider]) {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let data = data {
+                        DispatchQueue.main.async {
+                            do {
+                                let attachment = try PendingAttachment.from(imageData: data)
+                                withAnimation(.easeIn(duration: 0.2)) {
+                                    pendingAttachments.append(attachment)
+                                }
+                                attachmentError = nil
+                            } catch {
+                                attachmentError = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                    if let data = item as? Data,
+                       let url = URL(dataRepresentation: data, relativeTo: nil) {
+                        DispatchQueue.main.async {
+                            addAttachment(from: url)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
-
-// 保留 notification name 扩展，防止报错
-// extension Notification.Name {
-//    static let focusMessageInput = Notification.Name("focusMessageInput")
-// }
 
 #Preview {
     VStack(spacing: 20) {
         MessageInputView(
             text: .constant(""),
+            pendingAttachments: .constant([]),
             isLoading: false,
             onSend: {}
         )
 
         MessageInputView(
             text: .constant("Hello, this fits nicely."),
+            pendingAttachments: .constant([]),
             isLoading: false,
             onSend: {}
         )
-        
-        // 测试长文本滚动效果
+
         MessageInputView(
-            text: .constant("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."),
+            text: .constant("With attachments"),
+            pendingAttachments: .constant([
+                PendingAttachment(type: .image, mimeType: "image/png", data: Data(), filename: "image.png"),
+                PendingAttachment(type: .pdf, mimeType: "application/pdf", data: Data(), filename: "doc.pdf")
+            ]),
             isLoading: false,
             onSend: {}
         )
