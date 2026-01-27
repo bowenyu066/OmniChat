@@ -7,6 +7,9 @@ final class KeychainService {
 
     private let serviceName = "com.omnichat.app"
 
+    /// In-memory cache for API keys (avoids repeated keychain access)
+    private var keyCache: [Key: String] = [:]
+
     private init() {}
 
     /// Keys for different API providers
@@ -44,10 +47,18 @@ final class KeychainService {
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }
+
+        // Update cache
+        keyCache[key] = value
     }
 
     /// Retrieve an API key from the Keychain
     func get(key: Key) -> String? {
+        // Return from cache if available
+        if let cached = keyCache[key] {
+            return cached
+        }
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
@@ -65,6 +76,8 @@ final class KeychainService {
             return nil
         }
 
+        // Cache the result
+        keyCache[key] = string
         return string
     }
 
@@ -77,6 +90,9 @@ final class KeychainService {
         ]
 
         let status = SecItemDelete(query as CFDictionary)
+
+        // Remove from cache
+        keyCache.removeValue(forKey: key)
 
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.deleteFailed(status)
@@ -98,6 +114,18 @@ final class KeychainService {
     func saveAPIKey(_ apiKey: String, for provider: AIProvider) throws {
         guard let key = Key(provider: provider) else { return }
         try save(key: key, value: apiKey)
+    }
+
+    /// Preload all API keys into cache
+    func preloadKeys() {
+        for key in [Key.openAI, .anthropic, .google] {
+            _ = get(key: key)
+        }
+    }
+
+    /// Clear the cache
+    func clearCache() {
+        keyCache.removeAll()
     }
 }
 

@@ -42,7 +42,7 @@ struct MessageInputView: View {
                 // Attachment button
                 Button(action: openFilePicker) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 24))
+                        .font(.system(size: 32))
                         .foregroundStyle(Color.secondary)
                 }
                 .buttonStyle(.plain)
@@ -90,8 +90,17 @@ struct MessageInputView: View {
         .onReceive(NotificationCenter.default.publisher(for: .focusMessageInput)) { _ in
             isFocused = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .pasteImage)) { notification in
+            if let imageData = notification.userInfo?["imageData"] as? Data {
+                handlePastedImage(imageData)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .pasteFileURL)) { notification in
+            if let fileURL = notification.userInfo?["fileURL"] as? URL {
+                addAttachment(from: fileURL)
+            }
+        }
         .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: handleDrop)
-        .onPasteCommand(of: [.image, .fileURL], perform: handlePaste)
     }
 
     private var canSend: Bool {
@@ -161,34 +170,15 @@ struct MessageInputView: View {
         return true
     }
 
-    private func handlePaste(providers: [NSItemProvider]) {
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
-                    if let data = data {
-                        DispatchQueue.main.async {
-                            do {
-                                let attachment = try PendingAttachment.from(imageData: data)
-                                withAnimation(.easeIn(duration: 0.2)) {
-                                    pendingAttachments.append(attachment)
-                                }
-                                attachmentError = nil
-                            } catch {
-                                attachmentError = error.localizedDescription
-                            }
-                        }
-                    }
-                }
-            } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
-                    if let data = item as? Data,
-                       let url = URL(dataRepresentation: data, relativeTo: nil) {
-                        DispatchQueue.main.async {
-                            addAttachment(from: url)
-                        }
-                    }
-                }
+    private func handlePastedImage(_ data: Data) {
+        do {
+            let attachment = try PendingAttachment.from(imageData: data)
+            withAnimation(.easeIn(duration: 0.2)) {
+                pendingAttachments.append(attachment)
             }
+            attachmentError = nil
+        } catch {
+            attachmentError = error.localizedDescription
         }
     }
 }

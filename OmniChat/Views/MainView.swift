@@ -84,11 +84,6 @@ struct MainView: View {
     }
 }
 
-// Additional notification for focusing the message input
-extension Notification.Name {
-    static let focusMessageInput = Notification.Name("focusMessageInput")
-}
-
 #Preview {
     MainView()
         .modelContainer(for: [Conversation.self, Message.self], inMemory: true)

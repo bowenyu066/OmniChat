@@ -86,6 +86,13 @@ struct ChatView: View {
             .padding()
         }
         .navigationTitle(conversation.title)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                if conversation.isTitleGenerating {
+                    ProgressView()
+                }
+            }
+        }
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
@@ -101,93 +108,30 @@ struct ChatView: View {
     }
 
     private func getSystemPrompt(for provider: AIProvider) -> String {
-        // Base formatting instructions for all providers
-        let baseInstructions = """
-        You are a helpful AI assistant. When responding:
-
-        ## Math Formatting (CRITICAL - Follow Exactly):
-        - For INLINE math (within text): Use single dollar signs `$...$`
-          Example: The formula $E = mc^2$ shows energy-mass equivalence.
-        - For DISPLAY math (standalone equations): Use double dollar signs `$$...$$` on separate lines
-          Example:
-          $$
-          \\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}
-          $$
-        - NEVER use `\\(...\\)` or `\\[...\\]` for LaTeX
-        - NEVER use single $ for display math or $$ for inline math
-
-        ## Code Formatting:
-        - Use triple backticks with language identifier:
-          ```python
-          def example():
-              return "code"
-          ```
-        - For inline code, use single backticks: `code`
-
-        ## Markdown Formatting:
-        - Use **bold** and *italic* normally
-        - Use # for headers
-        - Use - or * for lists
-        - Keep formatting clean and readable
+        return """
+        You are a helpful AI assistant. Keep responses clear and concise.
         """
-
-        // Provider-specific adjustments
-        switch provider {
-        case .openAI:
-            return baseInstructions + """
-
-            ## Additional Notes:
-            - Be concise but thorough
-            - Show step-by-step work for math problems
-            - Always use the exact math delimiters specified above
-            """
-
-        case .anthropic:
-            return baseInstructions + """
-
-            ## Additional Notes:
-            - Explain your reasoning when helpful
-            - For complex math, break down the steps clearly
-            - Strictly adhere to the `$...$` and `$$...$$` format specified above
-            """
-
-        case .google:
-            return baseInstructions + """
-
-            ## Additional Notes:
-            - IMPORTANT: Gemini often uses `\\(...\\)` and `\\[...\\]` by default - DO NOT USE THESE
-            - ALWAYS use `$...$` for inline math and `$$...$$` for display math
-            - Double-check all mathematical expressions use the correct delimiters
-            """
-        }
     }
 
     private func sendMessage() {
         let hasText = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasAttachments = !pendingAttachments.isEmpty
-
         guard hasText || hasAttachments else { return }
 
-        // Convert pending attachments to Attachment models
+        // Convert pending attachments to Attachment models and build the user message
         let attachments = pendingAttachments.map { $0.toAttachment() }
-
         let userMessage = Message(role: .user, content: inputText, attachments: attachments)
         conversation.messages.append(userMessage)
         conversation.updatedAt = Date()
 
-        // Update title if this is the first message
-        if conversation.messages.count == 1 {
-            conversation.updateTitleFromFirstMessage()
-        }
-
+        // Reset input state
         inputText = ""
         pendingAttachments = []
         errorMessage = nil
         isLoading = true
 
+        // Prepare service
         let service = apiServiceFactory.service(for: selectedModel)
-
-        // Check if API is configured
         guard service.isConfigured else {
             isLoading = false
             errorMessage = "Please add your \(selectedModel.provider.displayName) API key in Settings (⌘,)"
@@ -217,7 +161,6 @@ struct ChatView: View {
         Task {
             do {
                 let stream = service.streamMessage(messages: chatMessages, model: selectedModel)
-
                 for try await chunk in stream {
                     await MainActor.run {
                         assistantMessage.content += chunk
@@ -228,14 +171,15 @@ struct ChatView: View {
                     conversation.updatedAt = Date()
                     isLoading = false
                     currentStreamingMessage = nil
+                    // Trigger title generation from full context (user + assistant)
+                    conversation.generateTitleFromContextAsync()
                 }
             } catch {
                 await MainActor.run {
                     // Remove the empty assistant message on error
-                    if assistantMessage.content.isEmpty {
-                        if let index = conversation.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-                            conversation.messages.remove(at: index)
-                        }
+                    if assistantMessage.content.isEmpty,
+                       let index = conversation.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
+                        conversation.messages.remove(at: index)
                     }
 
                     errorMessage = error.localizedDescription
@@ -247,10 +191,3 @@ struct ChatView: View {
     }
 }
 
-#Preview {
-    ChatView(
-        conversation: Conversation(title: "Test Chat"),
-        selectedModel: .constant(.gpt5_2)
-    )
-    .modelContainer(for: [Conversation.self, Message.self], inMemory: true)
-}

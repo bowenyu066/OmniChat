@@ -52,7 +52,7 @@ struct APIKeysSettingsView: View {
                 Text("Enter your API keys to enable each provider")
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Keys are stored securely in your macOS Keychain.")
+                    Text("Keys are stored securely in your macOS Keychain with Touch ID.")
                         .foregroundStyle(.secondary)
 
                     if showSaveConfirmation {

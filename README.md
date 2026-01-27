@@ -5,12 +5,13 @@ A native macOS SwiftUI application that unifies ChatGPT, Claude, and Gemini APIs
 ## Features
 
 - **Multiple AI Providers**: Seamlessly switch between OpenAI (ChatGPT), Anthropic (Claude), and Google (Gemini)
+- **AI-Powered Titles**: Automatic conversation title generation using GPT-4o
 - **Multimodal Support**: Attach images and PDFs to your messages with drag-and-drop, paste, or file picker
 - **Local Chat History**: All conversations stored securely locally using SwiftData
 - **Streaming Responses**: Real-time message streaming for a responsive user experience
 - **Markdown Rendering**: Full markdown support with syntax-highlighted code blocks
 - **LaTeX Support**: Render mathematical formulas with KaTeX (both inline and display modes)
-- **Secure API Keys**: Store API keys securely in macOS Keychain
+- **Secure API Keys**: Store API keys securely in macOS Keychain with App Sandbox
 - **Keyboard Shortcuts**: Navigate and chat efficiently with intuitive shortcuts
 - **Model Selection**: Choose from all available models for each provider with a dropdown selector
 
@@ -93,7 +94,8 @@ OmniChat/
 │   ├── Attachment.swift            # Image/PDF attachment model
 │   └── APIProvider.swift           # Provider configuration
 ├── Services/
-│   ├── KeychainService.swift       # Secure API key storage
+│   ├── KeychainService.swift         # Secure API key storage with caching
+│   ├── TitleGenerationService.swift  # AI-powered title generation
 │   └── APIService/
 │       ├── APIServiceProtocol.swift    # Service interface
 │       ├── OpenAIService.swift         # ChatGPT integration
@@ -127,6 +129,7 @@ OmniChat/
 - `title`: String
 - `createdAt`: Date
 - `updatedAt`: Date
+- `isTitleGenerating`: Bool
 - `messages`: [Message]
 
 **Message** (SwiftData Model)
@@ -175,7 +178,8 @@ All three providers support image and PDF attachments with provider-specific imp
 
 ### Security
 
-- API keys are stored in macOS Keychain using `SecItem` APIs
+- App Sandbox enabled with minimal required entitlements
+- API keys stored in macOS Keychain using `SecItem` APIs with in-memory caching
 - No credentials are logged or persisted to disk
 - Settings are stored securely in the system's standard locations
 
@@ -242,21 +246,17 @@ For API-specific issues, consult the provider's documentation:
 
 ## Latest Release
 
-### v0.1.3 (2026-01-27) - Multimodal Support
+### v0.1.4 (2026-01-27) - AI Title Generation & App Improvements
 
 **Added:**
-- Image and PDF attachment support for all providers (ChatGPT, Claude, Gemini)
-- File picker with ⌘⇧A shortcut
-- Drag-and-drop file attachment to input area
-- Paste (⌘V) for clipboard images
-- Attachment preview cards with remove button
-- Click-to-expand image viewer with zoom controls
-- PDF viewer with PDFKit integration and page count display
-- Save/copy context menus for attachments
-- 20MB file size limit with user-friendly error messages
+- AI-powered conversation title generation using GPT-4o
+- Title generation progress indicator in toolbar
+- Custom app icons for all macOS sizes
+- Improved clipboard image paste support for screenshots
 
 **Changed:**
-- Updated Anthropic API version to 2024-10-22 for multimodal support
-- Message model now includes attachments relationship with cascade delete
+- Re-enabled App Sandbox with proper entitlements
+- Simplified system prompts for better performance
+- In-memory API key caching for faster access
 
 See [CHANGELOG.md](CHANGELOG.md) for full release history.

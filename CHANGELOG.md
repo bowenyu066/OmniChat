@@ -2,6 +2,34 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.1.4 (2026-01-27) - AI Title Generation & App Improvements
+
+**Added:**
+- AI-powered conversation title generation using GPT-4o
+- `TitleGenerationService` for automatic title generation from conversation context
+- Title generation progress indicator in toolbar
+- Custom app icons in all required sizes (16, 32, 64, 128, 256, 512, 1024px)
+- In-memory API key caching in KeychainService to reduce keychain access
+- Notification-based image paste handling for clipboard screenshots
+
+**Changed:**
+- Title generation now uses full conversation context (user + assistant messages)
+- Re-enabled App Sandbox with proper entitlements (network.client, files.user-selected.read-only)
+- Simplified system prompts (removed verbose LaTeX formatting instructions)
+- Attachment button size increased from 24pt to 32pt for better visibility
+- Replaced `onPasteCommand` with custom Command menu paste handler for reliable clipboard image handling
+- Consolidated notification name definitions in OmniChatApp.swift
+
+**Fixed:**
+- Clipboard image paste now works reliably with screenshots
+- Text paste no longer interfered with by image paste handler
+
+**Technical:**
+- New `TitleGenerationService.swift` with GPT-4o integration
+- Added `isTitleGenerating` flag to Conversation model
+- Keychain caching with `preloadKeys()` and `clearCache()` methods
+- Moved `focusMessageInput` notification to app-level definitions
+
 ## v0.1.3 (2026-01-27) - Multimodal Support
 
 **Added:**
