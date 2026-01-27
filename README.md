@@ -26,7 +26,7 @@ A native macOS SwiftUI application that unifies ChatGPT, Claude, and Gemini APIs
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/OmniChat.git
+git clone https://github.com/bowenyu066/OmniChat.git
 cd OmniChat
 ```
 
@@ -60,22 +60,21 @@ open OmniChat.xcodeproj
 
 Click the model dropdown at the top of the chat window to select from available models:
 
-**OpenAI:**
-- gpt-4.1
-- gpt-4.1-mini
-- gpt-4o
-- o4-mini
-- o3-mini
+**OpenAI (2026):**
+- GPT-5.2 - Flagship model with reasoning_effort support for complex tasks
+- GPT-5 Mini - Fast and cost-efficient for well-defined tasks
+- GPT-4o - Reliable multimodal model
 
 **Anthropic (Claude):**
-- claude-opus-4-5-20251101
-- claude-sonnet-4-5-20250929
-- claude-haiku-4-5-20250929
+- Claude Opus 4.5 (claude-opus-4-5-20251101) - Most capable model
+- Claude Sonnet 4.5 (claude-sonnet-4-5-20250929) - Balanced performance
+- Claude Haiku 4.5 (claude-haiku-4-5-20250929) - Fast and efficient
 
-**Google (Gemini):**
-- gemini-2.5-pro
-- gemini-2.5-flash
-- gemini-2.5-flash-lite
+**Google (Gemini 3 - Preview):**
+- Gemini 3 Pro (Preview) - State-of-the-art reasoning with thinking controls
+- Gemini 3 Flash (Preview) - Fast frontier-class performance
+
+> **Note:** GPT-5.2 includes automatic reasoning_effort parameter (set to "medium" by default). Gemini 3 models include thinking controls via thinkingLevel parameter (Pro: "high", Flash: "medium").
 
 ## Architecture
 
@@ -129,7 +128,7 @@ OmniChat/
 - `role`: MessageRole (user/assistant)
 - `content`: String
 - `timestamp`: Date
-- `modelUsed`: String? (e.g., "gpt-4.1")
+- `modelUsed`: String? (e.g., "gpt-5.2")
 
 ## Implementation Details
 
@@ -137,9 +136,9 @@ OmniChat/
 
 All services implement streaming responses using `AsyncThrowingStream<String, Error>` for real-time message delivery.
 
-- **OpenAI**: Server-Sent Events (SSE) with `data:` prefixed JSON
-- **Anthropic**: SSE with `content_block_delta` events
-- **Google**: Newline-delimited JSON streaming
+- **OpenAI**: Server-Sent Events (SSE) with `data:` prefixed JSON, reasoning_effort parameter for GPT-5.2
+- **Anthropic**: SSE with `content_block_delta` events, API version 2023-06-01
+- **Google**: Server-Sent Events with `?alt=sse` parameter, API key in `x-goog-api-key` header, thinkingConfig support for Gemini 3
 
 ### Security
 
@@ -208,6 +207,25 @@ For API-specific issues, consult the provider's documentation:
 
 ## Changelog
 
+### v0.1.1 (2026-01-27) - API Updates & Gemini Fix
+
+**Updated:**
+- OpenAI: Migrated to 2026 models (GPT-5.2, GPT-5-mini, GPT-4o)
+- OpenAI: Added reasoning_effort parameter support for GPT-5.2 (default: "medium")
+- Google Gemini: Updated to Gemini 3 models (gemini-3-pro-preview, gemini-3-flash-preview)
+- Google Gemini: Fixed API key authentication (moved to x-goog-api-key header)
+- Google Gemini: Added streaming support with ?alt=sse parameter
+- Google Gemini: Implemented thinkingConfig with thinkingLevel parameter
+- Google Gemini: Added support for thoughtSignature field in responses
+
+**Fixed:**
+- Gemini API returning empty responses (incorrect API key placement)
+- Model references in preview views updated to new model names
+
+**Removed:**
+- Outdated OpenAI models: gpt-4.1, gpt-4.1-mini, o4-mini, o3-mini
+- Outdated Gemini models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite
+
 ### v0.1.0 (Initial Release - 2026-01-27)
 
 **Implemented:**
@@ -221,9 +239,9 @@ For API-specific issues, consult the provider's documentation:
 - Phase 8: Keyboard shortcuts and menu commands
 
 **Models Available:**
-- OpenAI: 5 latest models
-- Anthropic: 3 latest Claude models
-- Google: 3 latest Gemini models
+- OpenAI: 3 latest models (GPT-5.2, GPT-5-mini, GPT-4o)
+- Anthropic: 3 latest Claude models (Opus, Sonnet, Haiku 4.5)
+- Google: 2 Gemini 3 preview models (Pro, Flash)
 
 **Features:**
 - Real-time streaming responses
