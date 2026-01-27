@@ -1,0 +1,40 @@
+# Xcode
+.DS_Store
+xcuserdata/
+*.xcworkspace
+DerivedData/
+.build/
+*.pbxproj.swiftpm
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# Build artifacts
+build/
+.swiftbuild/
+
+# IDE
+.vscode/
+*.swiftpm
+*.xcodeproj/xcuserdata
+
+# Secrets
+.env
+.env.local
+*.plist.bak
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Temporary files
+*~
+*.swp
+*.swo
+*.tmp
