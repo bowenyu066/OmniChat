@@ -80,9 +80,9 @@ extension AIProvider {
 
 #Preview {
     VStack(spacing: 20) {
-        ModelSelectorView(selectedModel: .constant(.gpt4_1))
+        ModelSelectorView(selectedModel: .constant(.gpt5_2))
         ModelSelectorView(selectedModel: .constant(.claudeOpus4_5))
-        ModelSelectorView(selectedModel: .constant(.gemini2_5Pro))
+        ModelSelectorView(selectedModel: .constant(.gemini3ProPreview))
     }
     .padding()
     .frame(width: 400)

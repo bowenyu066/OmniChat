@@ -6,7 +6,7 @@ struct MainView: View {
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
 
     @State private var selectedConversation: Conversation?
-    @State private var selectedModel: AIModel = .gpt4_1
+    @State private var selectedModel: AIModel = .gpt5_2
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var isInputFocused: Bool
 

@@ -94,10 +94,14 @@ final class OpenAIService: APIServiceProtocol {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
+        // Add reasoning_effort for GPT-5.2 (default to "medium" for balanced performance)
+        let reasoningEffort: String? = (model.rawValue == "gpt-5.2") ? "medium" : nil
+
         let body = OpenAIRequest(
             model: model.rawValue,
             messages: messages,
-            stream: stream
+            stream: stream,
+            reasoning_effort: reasoningEffort
         )
 
         request.httpBody = try JSONEncoder().encode(body)
@@ -133,6 +137,21 @@ private struct OpenAIRequest: Encodable {
     let model: String
     let messages: [ChatMessage]
     let stream: Bool
+    let reasoning_effort: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages, stream, reasoning_effort
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(model, forKey: .model)
+        try container.encode(messages, forKey: .messages)
+        try container.encode(stream, forKey: .stream)
+        if let reasoning_effort = reasoning_effort {
+            try container.encode(reasoning_effort, forKey: .reasoning_effort)
+        }
+    }
 }
 
 private struct OpenAICompletionResponse: Decodable {

@@ -173,7 +173,7 @@ struct ChatView: View {
 #Preview {
     ChatView(
         conversation: Conversation(title: "Test Chat"),
-        selectedModel: .constant(.gpt4_1)
+        selectedModel: .constant(.gpt5_2)
     )
     .modelContainer(for: [Conversation.self, Message.self], inMemory: true)
 }
