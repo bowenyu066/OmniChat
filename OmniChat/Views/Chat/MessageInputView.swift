@@ -6,62 +6,31 @@ struct MessageInputView: View {
     let onSend: () -> Void
 
     @FocusState private var isFocused: Bool
-    @State private var textEditorHeight: CGFloat = 40
-
-    private let minHeight: CGFloat = 40
-    private let maxHeight: CGFloat = 200
-    private let placeholder = "Message..."
+    
+    // 配置项：最大显示多少行，超过则显示滚动条
+    private let maxLineLimit: Int = 8
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 12) {
-            // Text input area
-            ZStack(alignment: .topLeading) {
-                // Placeholder
-                if text.isEmpty {
-                    Text(placeholder)
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
-                        .allowsHitTesting(false)
-                }
-
-                // Hidden text for height calculation
-                Text(text.isEmpty ? placeholder : text)
-                    .font(.body)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
-                    .opacity(0)
-                    .background(GeometryReader { geometry in
-                        Color.clear.preference(
-                            key: TextHeightPreferenceKey.self,
-                            value: geometry.size.height
-                        )
-                    })
-
-                // Actual text editor
-                TextEditor(text: $text)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .focused($isFocused)
-            }
-            .frame(height: min(max(textEditorHeight, minHeight), maxHeight))
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2), lineWidth: 1)
-            )
-            .onPreferenceChange(TextHeightPreferenceKey.self) { height in
-                textEditorHeight = height
-            }
-            .onAppear {
-                isFocused = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .focusMessageInput)) { _ in
-                isFocused = true
-            }
+            
+            // --- 核心修改区域 Start ---
+            TextField("Message...", text: $text, axis: .vertical)
+                // 关键点 1: 启用垂直轴向，允许换行
+                .lineLimit(1...maxLineLimit)
+                // 关键点 2: 去除 macOS 默认的输入框样式（光晕/边框），完全自定义
+                .textFieldStyle(.plain)
+                .font(.body)
+                // 关键点 3: 通过 Padding 撑起圆角矩形，文字天然居中
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(isFocused ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.2), lineWidth: 1)
+                )
+                .focused($isFocused)
+            // --- 核心修改区域 End ---
 
             // Send button
             Button(action: {
@@ -76,8 +45,15 @@ struct MessageInputView: View {
             }
             .buttonStyle(.plain)
             .disabled(!canSend && !isLoading)
-            .keyboardShortcut(.return, modifiers: .command)
+            .keyboardShortcut(.return, modifiers: .command) // Command + Enter 发送
             .help(isLoading ? "Stop generating" : "Send message (⌘↩)")
+        }
+        .onAppear {
+            isFocused = true
+        }
+        // 保持此通知监听，以便外部可以重新聚焦输入框
+        .onReceive(NotificationCenter.default.publisher(for: .focusMessageInput)) { _ in
+            isFocused = true
         }
     }
 
@@ -86,15 +62,13 @@ struct MessageInputView: View {
     }
 }
 
-private struct TextHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 40
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
+// 保留 notification name 扩展，防止报错
+// extension Notification.Name {
+//    static let focusMessageInput = Notification.Name("focusMessageInput")
+// }
 
 #Preview {
-    VStack {
+    VStack(spacing: 20) {
         MessageInputView(
             text: .constant(""),
             isLoading: false,
@@ -102,17 +76,19 @@ private struct TextHeightPreferenceKey: PreferenceKey {
         )
 
         MessageInputView(
-            text: .constant("Hello, this is a test message that should expand the text area as it grows longer and wraps to multiple lines."),
+            text: .constant("Hello, this fits nicely."),
             isLoading: false,
             onSend: {}
         )
-
+        
+        // 测试长文本滚动效果
         MessageInputView(
-            text: .constant("Loading..."),
-            isLoading: true,
+            text: .constant("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."),
+            isLoading: false,
             onSend: {}
         )
     }
     .padding()
-    .frame(width: 500)
+    .frame(width: 400)
+    .background(Color.gray.opacity(0.1))
 }

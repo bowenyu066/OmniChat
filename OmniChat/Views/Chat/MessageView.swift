@@ -46,7 +46,7 @@ struct MessageView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                 }
             }
-            .frame(maxWidth: 700, alignment: isUser ? .trailing : .leading)
+            .frame(maxWidth: isUser ? 500 : .infinity, alignment: isUser ? .trailing : .leading)
 
             if isUser {
                 AvatarView(isUser: true, modelUsed: nil)
@@ -133,6 +133,10 @@ struct AvatarView: View {
             ```
 
             This function takes a `name` parameter and returns a greeting string.
+            
+            ### Key features $mlp$
+            
+            this doesn't look right with some weird paddings and spacing
             """, modelUsed: "gpt-4.1"))
         }
         .padding()

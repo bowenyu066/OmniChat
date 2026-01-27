@@ -29,10 +29,6 @@ struct ConversationRow: View {
                     .font(.headline)
                     .lineLimit(1)
             }
-
-            Text(conversation.updatedAt, style: .relative)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
         .onChange(of: isFocused) { _, newValue in

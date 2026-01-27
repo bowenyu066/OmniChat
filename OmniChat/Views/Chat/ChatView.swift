@@ -98,6 +98,68 @@ struct ChatView: View {
         }
     }
 
+    private func getSystemPrompt(for provider: AIProvider) -> String {
+        // Base formatting instructions for all providers
+        let baseInstructions = """
+        You are a helpful AI assistant. When responding:
+
+        ## Math Formatting (CRITICAL - Follow Exactly):
+        - For INLINE math (within text): Use single dollar signs `$...$`
+          Example: The formula $E = mc^2$ shows energy-mass equivalence.
+        - For DISPLAY math (standalone equations): Use double dollar signs `$$...$$` on separate lines
+          Example:
+          $$
+          \\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}
+          $$
+        - NEVER use `\\(...\\)` or `\\[...\\]` for LaTeX
+        - NEVER use single $ for display math or $$ for inline math
+
+        ## Code Formatting:
+        - Use triple backticks with language identifier:
+          ```python
+          def example():
+              return "code"
+          ```
+        - For inline code, use single backticks: `code`
+
+        ## Markdown Formatting:
+        - Use **bold** and *italic* normally
+        - Use # for headers
+        - Use - or * for lists
+        - Keep formatting clean and readable
+        """
+
+        // Provider-specific adjustments
+        switch provider {
+        case .openAI:
+            return baseInstructions + """
+
+            ## Additional Notes:
+            - Be concise but thorough
+            - Show step-by-step work for math problems
+            - Always use the exact math delimiters specified above
+            """
+
+        case .anthropic:
+            return baseInstructions + """
+
+            ## Additional Notes:
+            - Explain your reasoning when helpful
+            - For complex math, break down the steps clearly
+            - Strictly adhere to the `$...$` and `$$...$$` format specified above
+            """
+
+        case .google:
+            return baseInstructions + """
+
+            ## Additional Notes:
+            - IMPORTANT: Gemini often uses `\\(...\\)` and `\\[...\\]` by default - DO NOT USE THESE
+            - ALWAYS use `$...$` for inline math and `$$...$$` for display math
+            - Double-check all mathematical expressions use the correct delimiters
+            """
+        }
+    }
+
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
@@ -124,9 +186,15 @@ struct ChatView: View {
         }
 
         // Prepare messages for API
-        let chatMessages = conversation.messages
+        var chatMessages = conversation.messages
             .sorted(by: { $0.timestamp < $1.timestamp })
             .map { ChatMessage(from: $0) }
+
+        // Inject system prompt at the beginning if not present
+        if !chatMessages.contains(where: { $0.role == "system" }) {
+            let systemPrompt = getSystemPrompt(for: selectedModel.provider)
+            chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+        }
 
         // Create assistant message for streaming
         let assistantMessage = Message(

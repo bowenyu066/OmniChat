@@ -20,14 +20,17 @@ struct MainView: View {
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 350)
         } detail: {
-            if let conversation = selectedConversation {
-                ChatView(
-                    conversation: conversation,
-                    selectedModel: $selectedModel
-                )
-            } else {
-                WelcomeView(onNewChat: createNewConversation)
+            VStack(spacing: 0) {
+                if let conversation = selectedConversation {
+                    ChatView(
+                        conversation: conversation,
+                        selectedModel: $selectedModel
+                    )
+                } else {
+                    WelcomeView(onNewChat: createNewConversation)
+                }
             }
+            .padding(.top, 0)
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 900, minHeight: 600)
