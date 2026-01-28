@@ -66,6 +66,19 @@ struct MessageInputView: View {
                             )
                     )
                     .focused($isFocused)
+                    .onKeyPress(.return, phases: .down) { keyPress in
+                        if keyPress.modifiers.contains(.shift) {
+                            // Shift+Enter: insert newline
+                            text += "\n"
+                            return .handled
+                        } else {
+                            // Enter alone: send message
+                            if canSend {
+                                onSend()
+                            }
+                            return .handled
+                        }
+                    }
 
                 // Send button
                 Button(action: {
@@ -80,8 +93,7 @@ struct MessageInputView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend && !isLoading)
-                .keyboardShortcut(.return, modifiers: .command)
-                .help(isLoading ? "Stop generating" : "Send message (⌘↩)")
+                .help(isLoading ? "Stop generating" : "Send message (↩)")
             }
         }
         .onAppear {

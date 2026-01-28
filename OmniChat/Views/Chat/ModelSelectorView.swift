@@ -4,10 +4,7 @@ struct ModelSelectorView: View {
     @Binding var selectedModel: AIModel
 
     var body: some View {
-        HStack {
-            Spacer()
-
-            Menu {
+        Menu {
                 ForEach(AIProvider.allCases) { provider in
                     Section {
                         ForEach(provider.availableModels) { model in
@@ -52,11 +49,8 @@ struct ModelSelectorView: View {
                         .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5)
                 )
             }
-            .buttonStyle(.plain)
-            .help("Select AI model")
-
-            Spacer()
-        }
+        .buttonStyle(.plain)
+        .help("Select AI model")
     }
 }
 

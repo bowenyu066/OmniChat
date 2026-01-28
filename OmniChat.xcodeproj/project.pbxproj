@@ -33,6 +33,14 @@
 		A100001A /* AttachmentPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A /* AttachmentPreviewView.swift */; };
 		A100001B /* AttachmentDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001B /* AttachmentDisplayView.swift */; };
 		A100001C /* TitleGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001C /* TitleGenerationService.swift */; };
+		A100001D /* MemoryType.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001D /* MemoryType.swift */; };
+		A100001E /* MemoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* MemoryItem.swift */; };
+		A100001F /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001F /* Workspace.swift */; };
+		A1000020 /* MemoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020 /* MemoryRow.swift */; };
+		A1000021 /* MemoryFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000021 /* MemoryFilterBar.swift */; };
+		A1000022 /* MemoryPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000022 /* MemoryPanelView.swift */; };
+		A1000023 /* MemoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023 /* MemoryEditorView.swift */; };
+		A1000024 /* ChatMemoryContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024 /* ChatMemoryContextView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -64,6 +72,14 @@
 		A200001A /* AttachmentPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentPreviewView.swift; sourceTree = "<group>"; };
 		A200001B /* AttachmentDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentDisplayView.swift; sourceTree = "<group>"; };
 		A200001C /* TitleGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleGenerationService.swift; sourceTree = "<group>"; };
+		A200001D /* MemoryType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryType.swift; sourceTree = "<group>"; };
+		A200001E /* MemoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryItem.swift; sourceTree = "<group>"; };
+		A200001F /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
+		A2000020 /* MemoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryRow.swift; sourceTree = "<group>"; };
+		A2000021 /* MemoryFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryFilterBar.swift; sourceTree = "<group>"; };
+		A2000022 /* MemoryPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPanelView.swift; sourceTree = "<group>"; };
+		A2000023 /* MemoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEditorView.swift; sourceTree = "<group>"; };
+		A2000024 /* ChatMemoryContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMemoryContextView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +137,9 @@
 				A2000003 /* Message.swift */,
 				A2000004 /* APIProvider.swift */,
 				A2000019 /* Attachment.swift */,
+				A200001D /* MemoryType.swift */,
+				A200001E /* MemoryItem.swift */,
+				A200001F /* Workspace.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -133,6 +152,7 @@
 				A4000009 /* Chat */,
 				A400000A /* Settings */,
 				A400000B /* Components */,
+				A400000E /* Memory */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -161,6 +181,7 @@
 				A2000009 /* MessageView.swift */,
 				A200000A /* MessageInputView.swift */,
 				A200000B /* ModelSelectorView.swift */,
+				A2000024 /* ChatMemoryContextView.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -205,6 +226,17 @@
 				A2000016 /* GoogleAIService.swift */,
 			);
 			path = APIService;
+			sourceTree = "<group>";
+		};
+		A400000E /* Memory */ = {
+			isa = PBXGroup;
+			children = (
+				A2000020 /* MemoryRow.swift */,
+				A2000021 /* MemoryFilterBar.swift */,
+				A2000022 /* MemoryPanelView.swift */,
+				A2000023 /* MemoryEditorView.swift */,
+			);
+			path = Memory;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -301,6 +333,14 @@
 				A100001A /* AttachmentPreviewView.swift in Sources */,
 				A100001B /* AttachmentDisplayView.swift in Sources */,
 				A100001C /* TitleGenerationService.swift in Sources */,
+				A100001D /* MemoryType.swift in Sources */,
+				A100001E /* MemoryItem.swift in Sources */,
+				A100001F /* Workspace.swift in Sources */,
+				A1000020 /* MemoryRow.swift in Sources */,
+				A1000021 /* MemoryFilterBar.swift in Sources */,
+				A1000022 /* MemoryPanelView.swift in Sources */,
+				A1000023 /* MemoryEditorView.swift in Sources */,
+				A1000024 /* ChatMemoryContextView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

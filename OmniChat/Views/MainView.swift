@@ -3,6 +3,7 @@ import SwiftData
 
 struct MainView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @Query(sort: \Conversation.updatedAt, order: .reverse) private var conversations: [Conversation]
 
     @State private var selectedConversation: Conversation?
@@ -16,7 +17,8 @@ struct MainView: View {
                 conversations: conversations,
                 selectedConversation: $selectedConversation,
                 onNewChat: createNewConversation,
-                onDelete: deleteConversation
+                onDelete: deleteConversation,
+                onOpenMemoryPanel: { openWindow(id: "memory-panel") }
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 350)
         } detail: {
@@ -24,7 +26,10 @@ struct MainView: View {
                 if let conversation = selectedConversation {
                     ChatView(
                         conversation: conversation,
-                        selectedModel: $selectedModel
+                        selectedModel: $selectedModel,
+                        onBranchConversation: { newConversation in
+                            selectedConversation = newConversation
+                        }
                     )
                 } else {
                     WelcomeView(onNewChat: createNewConversation)
@@ -60,6 +65,9 @@ struct MainView: View {
             if let conversation = selectedConversation {
                 clearConversation(conversation)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleMemoryPanel)) { _ in
+            openWindow(id: "memory-panel")
         }
     }
 

@@ -1,6 +1,10 @@
 import SwiftUI
+import LocalAuthentication
+import Combine
 
 struct SettingsView: View {
+    @EnvironmentObject var authManager: AuthManager
+
     var body: some View {
         TabView {
             APIKeysSettingsView()
@@ -14,59 +18,143 @@ struct SettingsView: View {
                 }
         }
         .frame(width: 550, height: 350)
+        .onDisappear {
+            // Clear settings auth when leaving settings
+            authManager.clearSettingsAuth()
+        }
     }
 }
 
 struct APIKeysSettingsView: View {
+    @EnvironmentObject var authManager: AuthManager
+
     @State private var openAIKey: String = ""
     @State private var anthropicKey: String = ""
     @State private var googleKey: String = ""
-    @State private var showSaveConfirmation = false
+
+    @State private var isAuthenticated = false
+    @State private var isAuthenticating = false
+    @State private var authError: String?
+
+    @State private var saveStatus: [AIProvider: SaveStatus] = [:]
 
     private let keychainService = KeychainService.shared
 
+    enum SaveStatus: Equatable {
+        case idle
+        case saving
+        case saved
+        case error(String)
+    }
+
     var body: some View {
+        Group {
+            if isAuthenticated {
+                authenticatedView
+            } else {
+                unauthenticatedView
+            }
+        }
+        .onAppear {
+            checkAuthentication()
+        }
+    }
+
+    private var unauthenticatedView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+
+            Text("Authentication Required")
+                .font(.title2)
+                .fontWeight(.medium)
+
+            Text("Please authenticate to view and manage your API keys.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            if let error = authError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+
+            Button(action: authenticate) {
+                if isAuthenticating {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Label("Authenticate", systemImage: "touchid")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isAuthenticating)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var authenticatedView: some View {
         Form {
             Section {
-                APIKeyRow(
-                    provider: "OpenAI",
+                AutoSaveAPIKeyRow(
+                    provider: .openAI,
                     placeholder: "sk-...",
                     apiKey: $openAIKey,
-                    onSave: { saveKey(.openAI, value: openAIKey) }
+                    saveStatus: saveStatus[.openAI] ?? .idle,
+                    onSave: { saveKey(.openAI, value: $0) }
                 )
 
-                APIKeyRow(
-                    provider: "Anthropic",
+                AutoSaveAPIKeyRow(
+                    provider: .anthropic,
                     placeholder: "sk-ant-...",
                     apiKey: $anthropicKey,
-                    onSave: { saveKey(.anthropic, value: anthropicKey) }
+                    saveStatus: saveStatus[.anthropic] ?? .idle,
+                    onSave: { saveKey(.anthropic, value: $0) }
                 )
 
-                APIKeyRow(
-                    provider: "Google AI",
+                AutoSaveAPIKeyRow(
+                    provider: .google,
                     placeholder: "AIza...",
                     apiKey: $googleKey,
-                    onSave: { saveKey(.google, value: googleKey) }
+                    saveStatus: saveStatus[.google] ?? .idle,
+                    onSave: { saveKey(.google, value: $0) }
                 )
             } header: {
                 Text("Enter your API keys to enable each provider")
             } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Keys are stored securely in your macOS Keychain with Touch ID.")
-                        .foregroundStyle(.secondary)
-
-                    if showSaveConfirmation {
-                        Text("Key saved!")
-                            .foregroundStyle(.green)
-                            .transition(.opacity)
-                    }
-                }
+                Text("Keys are stored securely in your macOS Keychain. Changes are auto-saved.")
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .padding()
         .onAppear {
             loadKeys()
+        }
+    }
+
+    private func checkAuthentication() {
+        if authManager.isSettingsAuthenticated {
+            isAuthenticated = true
+        }
+    }
+
+    private func authenticate() {
+        isAuthenticating = true
+        authError = nil
+
+        Task {
+            let success = await authManager.authenticateForSettings()
+            await MainActor.run {
+                isAuthenticating = false
+                isAuthenticated = success
+                if !success {
+                    authError = "Authentication failed. Please try again."
+                }
+            }
         }
     }
 
@@ -77,18 +165,131 @@ struct APIKeysSettingsView: View {
     }
 
     private func saveKey(_ provider: AIProvider, value: String) {
-        do {
-            try keychainService.saveAPIKey(value, for: provider)
-            withAnimation {
-                showSaveConfirmation = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                withAnimation {
-                    showSaveConfirmation = false
+        saveStatus[provider] = .saving
+
+        Task {
+            do {
+                if value.isEmpty {
+                    // Delete the key if empty
+                    if let key = KeychainService.Key(provider: provider) {
+                        try keychainService.delete(key: key)
+                    }
+                } else {
+                    try keychainService.saveAPIKey(value, for: provider)
+                }
+
+                await MainActor.run {
+                    saveStatus[provider] = .saved
+                }
+
+                // Reset to idle after 2 seconds
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await MainActor.run {
+                    if saveStatus[provider] == .saved {
+                        saveStatus[provider] = .idle
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    saveStatus[provider] = .error(error.localizedDescription)
                 }
             }
-        } catch {
-            print("Failed to save key: \(error)")
+        }
+    }
+}
+
+// MARK: - Auto-Save API Key Row
+
+struct AutoSaveAPIKeyRow: View {
+    let provider: AIProvider
+    let placeholder: String
+    @Binding var apiKey: String
+    let saveStatus: APIKeysSettingsView.SaveStatus
+    let onSave: (String) -> Void
+
+    @State private var isSecure = true
+    @State private var debounceTask: Task<Void, Never>?
+
+    var body: some View {
+        HStack {
+            // Provider label
+            Text(provider.displayName)
+                .frame(width: 80, alignment: .leading)
+
+            // Key input field
+            Group {
+                if isSecure {
+                    SecureField(placeholder, text: $apiKey)
+                } else {
+                    TextField(placeholder, text: $apiKey)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .onChange(of: apiKey) { _, newValue in
+                debounceAndSave(newValue)
+            }
+
+            // Toggle visibility
+            Button(action: { isSecure.toggle() }) {
+                Image(systemName: isSecure ? "eye.slash" : "eye")
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isSecure ? "Show key" : "Hide key")
+
+            // Save status indicator
+            saveStatusView
+                .frame(width: 70)
+        }
+    }
+
+    @ViewBuilder
+    private var saveStatusView: some View {
+        switch saveStatus {
+        case .idle:
+            EmptyView()
+        case .saving:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .scaleEffect(0.6)
+                Text("Saving...")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        case .saved:
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                Text("Saved")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
+            .transition(.opacity)
+        case .error(let message):
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundColor(.red)
+                Text("Error")
+                    .font(.caption)
+                    .foregroundColor(.red)
+            }
+            .help(message)
+        }
+    }
+
+    private func debounceAndSave(_ value: String) {
+        // Cancel previous debounce task
+        debounceTask?.cancel()
+
+        // Create new debounce task (500ms delay)
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                onSave(value)
+            }
         }
     }
 }
@@ -111,4 +312,5 @@ struct GeneralSettingsView: View {
 
 #Preview {
     SettingsView()
+        .environmentObject(AuthManager())
 }

@@ -10,10 +10,13 @@ final class KeychainService {
     /// In-memory cache for API keys (avoids repeated keychain access)
     private var keyCache: [Key: String] = [:]
 
+    /// Track if keys have been preloaded
+    private var hasPreloaded = false
+
     private init() {}
 
     /// Keys for different API providers
-    enum Key: String {
+    enum Key: String, CaseIterable {
         case openAI = "openai_api_key"
         case anthropic = "anthropic_api_key"
         case google = "google_api_key"
@@ -27,19 +30,21 @@ final class KeychainService {
         }
     }
 
-    /// Save an API key to the Keychain
+    /// Save an API key to the Keychain (without requiring user interaction for future reads)
     func save(key: Key, value: String) throws {
         let data = Data(value.utf8)
 
         // Delete any existing item first
         try? delete(key: key)
 
+        // Create query without access control that requires user presence
+        // kSecAttrAccessibleAfterFirstUnlock allows reading without prompts after device unlock
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: key.rawValue,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -56,7 +61,7 @@ final class KeychainService {
     func get(key: Key) -> String? {
         // Return from cache if available
         if let cached = keyCache[key] {
-            return cached
+            return cached.isEmpty ? nil : cached
         }
 
         let query: [String: Any] = [
@@ -73,6 +78,8 @@ final class KeychainService {
         guard status == errSecSuccess,
               let data = result as? Data,
               let string = String(data: data, encoding: .utf8) else {
+            // Cache empty result to avoid repeated keychain queries
+            keyCache[key] = ""
             return nil
         }
 
@@ -116,16 +123,32 @@ final class KeychainService {
         try save(key: key, value: apiKey)
     }
 
-    /// Preload all API keys into cache
+    /// Preload all API keys into cache at app startup
+    /// This triggers any keychain prompts upfront, all at once
     func preloadKeys() {
-        for key in [Key.openAI, .anthropic, .google] {
+        guard !hasPreloaded else { return }
+        hasPreloaded = true
+
+        for key in Key.allCases {
             _ = get(key: key)
         }
     }
 
-    /// Clear the cache
+    /// Clear the cache (use when you want to force re-read from keychain)
     func clearCache() {
         keyCache.removeAll()
+        hasPreloaded = false
+    }
+
+    /// Migrate existing keys to new access settings (run once after update)
+    func migrateKeysToNewAccessSettings() {
+        for key in Key.allCases {
+            // Read current value (may trigger prompt)
+            if let value = get(key: key), !value.isEmpty {
+                // Re-save with new access settings
+                try? save(key: key, value: value)
+            }
+        }
     }
 }
 
