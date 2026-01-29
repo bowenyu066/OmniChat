@@ -78,6 +78,11 @@ final class FileIndexer {
 
             workspace.lastIndexedAt = Date()
             workspace.indexStatus = .idle
+
+            // Explicitly save the context
+            print("💾 Saving \(workspace.fileEntries.count) entries to database...")
+            try modelContext.save()
+            print("✅ Database save complete!")
         } catch {
             workspace.indexStatus = .error
             throw error
@@ -200,13 +205,16 @@ final class FileIndexer {
                 )
                 if let oldEntry = workspace.fileEntries.first(where: { $0.relativePath == relativePath }) {
                     modelContext.delete(oldEntry)
+                    workspace.fileEntries.removeAll { $0.id == oldEntry.id }
                 }
 
-                // Insert new entry
-                modelContext.insert(entry)
-                workspace.fileEntries.append(entry)
+                // Set the workspace relationship BEFORE inserting
+                entry.workspace = workspace
 
-                print("   ✓ Success: \(entry.chunks.count) chunks")
+                // Insert new entry (SwiftData will handle the relationship)
+                modelContext.insert(entry)
+
+                print("   ✓ Success: \(entry.chunks.count) chunks, relationship set")
                 successCount += 1
             } catch {
                 // Log error but continue indexing other files
