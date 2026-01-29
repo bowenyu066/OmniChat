@@ -2,6 +2,34 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.2.1 (2026-01-29) - Workspace Fixes & Native PDF Support
+
+**Added:**
+- Workspace deletion with right-click context menu and confirmation dialog
+- Delete workspace works even during active indexing
+
+**Fixed:**
+- File indexing now properly persists indexed files to database (SwiftData relationship fix)
+- Workspace deletion no longer crashes app (ID-based state management)
+- WorkspaceDetailView no longer crashes when workspace is deleted
+- Claude API now works correctly (API version set to `2023-06-01`)
+- Claude Haiku 4.5 model ID corrected (`claude-haiku-4-5-20251001`)
+
+**Changed:**
+- Native PDF support for all providers (no more image conversion):
+  - OpenAI: Uses `type: "file"` with `file_data` (native PDF, up to 100 pages)
+  - Anthropic: Uses `type: "document"` with base64 (native PDF)
+  - Google: Uses `inlineData` with `application/pdf` (native PDF)
+- Workspace views rewritten with ID-based lookup to prevent SwiftData invalidation crashes
+- Anthropic API version updated from `2024-10-22` to `2023-06-01` (standard version)
+
+**Technical:**
+- FileIndexer: Changed relationship assignment from `entry.workspace = workspace` to `workspace.fileEntries.append(entry)`
+- WorkspacePanelView: Uses `selectedWorkspaceID: UUID?` instead of `selectedWorkspace: Workspace?`
+- WorkspaceDetailView: Queries workspace by ID, handles missing workspace gracefully
+- OpenAIService: Removed PDF-to-image conversion, now sends native PDF
+- Removed unused PDFKit import from OpenAIService
+
 ## v0.2.0 (2026-01-28) - Memory-First Design & UX Improvements
 
 **Added:**

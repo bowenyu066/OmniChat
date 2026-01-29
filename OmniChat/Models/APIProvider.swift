@@ -36,7 +36,7 @@ enum AIModel: String, CaseIterable, Codable, Identifiable {
     // Anthropic models (2025)
     case claudeOpus4_5 = "claude-opus-4-5-20251101"
     case claudeSonnet4_5 = "claude-sonnet-4-5-20250929"
-    case claudeHaiku4_5 = "claude-haiku-4-5-20250929"
+    case claudeHaiku4_5 = "claude-haiku-4-5-20251001"
 
     // Google models (2026)
     case gemini3ProPreview = "gemini-3-pro-preview"

@@ -1,25 +1,59 @@
 import SwiftUI
 import SwiftData
 
+/// Detail view that looks up workspace by ID - safe against deletion
 struct WorkspaceDetailView: View {
+    let workspaceID: UUID
+
     @Environment(\.modelContext) private var modelContext
-    @Bindable var workspace: Workspace
+    @Query private var allWorkspaces: [Workspace]
+    @Query private var allFileEntries: [FileIndexEntry]
 
     @State private var isIndexing = false
     @State private var indexProgress: (current: Int, total: Int)?
     @State private var showingError: String?
 
+    private var workspace: Workspace? {
+        allWorkspaces.first { $0.id == workspaceID }
+    }
+
+    private var fileEntries: [FileIndexEntry] {
+        allFileEntries.filter { $0.workspace?.id == workspaceID }
+    }
+
     var body: some View {
+        Group {
+            if let ws = workspace {
+                workspaceContent(ws)
+            } else {
+                ContentUnavailableView(
+                    "Workspace Not Found",
+                    systemImage: "folder.badge.questionmark",
+                    description: Text("This workspace may have been deleted.")
+                )
+            }
+        }
+        .alert("Error", isPresented: .constant(showingError != nil)) {
+            Button("OK") { showingError = nil }
+        } message: {
+            if let error = showingError {
+                Text(error)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func workspaceContent(_ ws: Workspace) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 // Header
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(workspace.name)
+                    Text(ws.name)
                         .font(.largeTitle)
                         .fontWeight(.bold)
 
-                    if !workspace.workspaceDescription.isEmpty {
-                        Text(workspace.workspaceDescription)
+                    if !ws.workspaceDescription.isEmpty {
+                        Text(ws.workspaceDescription)
                             .font(.body)
                             .foregroundColor(.secondary)
                     }
@@ -29,7 +63,7 @@ struct WorkspaceDetailView: View {
 
                 // Folder info
                 GroupBox("Folder") {
-                    if let bookmarkData = workspace.folderBookmark {
+                    if let bookmarkData = ws.folderBookmark {
                         VStack(alignment: .leading, spacing: 12) {
                             if let url = try? SecurityScopedBookmarkService.shared.resolveBookmark(bookmarkData) {
                                 HStack {
@@ -59,25 +93,22 @@ struct WorkspaceDetailView: View {
                 // Index status
                 GroupBox("Index Status") {
                     VStack(alignment: .leading, spacing: 12) {
-                        // Status
                         HStack {
                             Text("Status:")
                                 .fontWeight(.medium)
                             Spacer()
-                            statusBadge
+                            statusBadge(for: ws.indexStatus)
                         }
 
-                        // File count
                         HStack {
                             Text("Files indexed:")
                                 .fontWeight(.medium)
                             Spacer()
-                            Text("\(workspace.fileEntries.count)")
+                            Text("\(fileEntries.count)")
                                 .foregroundColor(.secondary)
                         }
 
-                        // Last indexed
-                        if let lastIndexed = workspace.lastIndexedAt {
+                        if let lastIndexed = ws.lastIndexedAt {
                             HStack {
                                 Text("Last indexed:")
                                     .fontWeight(.medium)
@@ -87,7 +118,6 @@ struct WorkspaceDetailView: View {
                             }
                         }
 
-                        // Progress
                         if let progress = indexProgress {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Indexing: \(progress.current) / \(progress.total)")
@@ -99,8 +129,7 @@ struct WorkspaceDetailView: View {
 
                         Divider()
 
-                        // Re-index button
-                        Button(action: reindex) {
+                        Button(action: { reindex(ws) }) {
                             Label("Re-index Workspace", systemImage: "arrow.clockwise")
                         }
                         .disabled(isIndexing)
@@ -110,10 +139,13 @@ struct WorkspaceDetailView: View {
                 // Settings
                 GroupBox("Settings") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Toggle("Enable write access (use with caution)", isOn: $workspace.writeEnabled)
-                            .toggleStyle(.switch)
+                        Toggle("Enable write access (use with caution)", isOn: Binding(
+                            get: { ws.writeEnabled },
+                            set: { ws.writeEnabled = $0 }
+                        ))
+                        .toggleStyle(.switch)
 
-                        if workspace.writeEnabled {
+                        if ws.writeEnabled {
                             HStack {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.yellow)
@@ -126,17 +158,16 @@ struct WorkspaceDetailView: View {
                 }
 
                 // File list preview
-                if !workspace.fileEntries.isEmpty {
+                if !fileEntries.isEmpty {
                     GroupBox("Indexed Files") {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 4) {
-                                ForEach(workspace.fileEntries.prefix(20), id: \.id) { entry in
+                                ForEach(fileEntries.prefix(20), id: \.id) { entry in
                                     HStack {
                                         Image(systemName: fileIcon(for: entry.relativePath))
                                             .font(.caption)
                                             .foregroundColor(.secondary)
                                         Text(entry.relativePath)
-                                            .font(.caption)
                                             .font(.system(.caption, design: .monospaced))
                                         Spacer()
                                         Text("\(entry.chunks.count) chunks")
@@ -145,8 +176,8 @@ struct WorkspaceDetailView: View {
                                     }
                                 }
 
-                                if workspace.fileEntries.count > 20 {
-                                    Text("... and \(workspace.fileEntries.count - 20) more")
+                                if fileEntries.count > 20 {
+                                    Text("... and \(fileEntries.count - 20) more")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                         .padding(.top, 4)
@@ -161,18 +192,11 @@ struct WorkspaceDetailView: View {
             }
             .padding()
         }
-        .alert("Error", isPresented: .constant(showingError != nil)) {
-            Button("OK") { showingError = nil }
-        } message: {
-            if let error = showingError {
-                Text(error)
-            }
-        }
     }
 
     @ViewBuilder
-    private var statusBadge: some View {
-        switch workspace.indexStatus {
+    private func statusBadge(for status: IndexStatus) -> some View {
+        switch status {
         case .idle:
             HStack {
                 Image(systemName: "checkmark.circle.fill")
@@ -209,14 +233,14 @@ struct WorkspaceDetailView: View {
         }
     }
 
-    private func reindex() {
+    private func reindex(_ ws: Workspace) {
         isIndexing = true
         indexProgress = nil
 
         Task {
             do {
                 try await FileIndexer.shared.indexWorkspace(
-                    workspace,
+                    ws,
                     modelContext: modelContext,
                     onProgress: { current, total in
                         Task { @MainActor in
@@ -241,7 +265,6 @@ struct WorkspaceDetailView: View {
 }
 
 #Preview {
-    let workspace = Workspace(name: "My Project", workspaceDescription: "A sample SwiftUI project")
-    return WorkspaceDetailView(workspace: workspace)
+    WorkspaceDetailView(workspaceID: UUID())
         .modelContainer(for: [Workspace.self, FileIndexEntry.self])
 }

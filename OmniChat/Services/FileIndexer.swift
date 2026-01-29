@@ -74,7 +74,10 @@ final class FileIndexer {
                     modelContext: modelContext,
                     onProgress: onProgress
                 )
+                print("📊 Inside closure after indexFolder: workspace.fileEntries.count = \(workspace.fileEntries.count)")
             }
+
+            print("📊 After closure: workspace.fileEntries.count = \(workspace.fileEntries.count)")
 
             workspace.lastIndexedAt = Date()
             workspace.indexStatus = .idle
@@ -83,6 +86,7 @@ final class FileIndexer {
             print("💾 Saving \(workspace.fileEntries.count) entries to database...")
             try modelContext.save()
             print("✅ Database save complete!")
+            print("🔍 After save: workspace.fileEntries.count = \(workspace.fileEntries.count)")
         } catch {
             workspace.indexStatus = .error
             throw error
@@ -194,25 +198,23 @@ final class FileIndexer {
                     url: file.url,
                     mtime: file.mtime,
                     size: file.size,
-                    relativeTo: folderURL,
-                    workspace: workspace
+                    relativeTo: folderURL
                 )
 
-                // Remove old entry if exists
+                // Remove old entry if exists (SwiftData will handle relationship cleanup)
                 let relativePath = file.url.path.replacingOccurrences(
                     of: folderURL.path + "/",
                     with: ""
                 )
                 if let oldEntry = workspace.fileEntries.first(where: { $0.relativePath == relativePath }) {
                     modelContext.delete(oldEntry)
-                    workspace.fileEntries.removeAll { $0.id == oldEntry.id }
                 }
 
-                // Set the workspace relationship BEFORE inserting
-                entry.workspace = workspace
-
-                // Insert new entry (SwiftData will handle the relationship)
+                // Insert first so entry becomes a managed object
                 modelContext.insert(entry)
+
+                // Explicitly append to parent's array - more reliable than setting child.parent
+                workspace.fileEntries.append(entry)
 
                 print("   ✓ Success: \(entry.chunks.count) chunks, relationship set")
                 successCount += 1
@@ -231,8 +233,7 @@ final class FileIndexer {
         url: URL,
         mtime: Date,
         size: Int64,
-        relativeTo baseURL: URL,
-        workspace: Workspace
+        relativeTo baseURL: URL
     ) throws -> FileIndexEntry {
         let isPDF = url.pathExtension.lowercased() == "pdf"
         print("      🔧 Processing file: isPDF=\(isPDF)")
@@ -273,13 +274,12 @@ final class FileIndexer {
             with: ""
         )
 
-        // Create entry
+        // Create entry (workspace relationship set by caller via append)
         return FileIndexEntry(
             relativePath: relativePath,
             mtime: mtime,
             fileSize: size,
-            chunks: chunks,
-            workspace: workspace
+            chunks: chunks
         )
     }
 

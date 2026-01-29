@@ -95,7 +95,7 @@ Click the model dropdown at the top of the chat window to select from available 
 **Anthropic (Claude):**
 - Claude Opus 4.5 (claude-opus-4-5-20251101) - Most capable model
 - Claude Sonnet 4.5 (claude-sonnet-4-5-20250929) - Balanced performance
-- Claude Haiku 4.5 (claude-haiku-4-5-20250929) - Fast and efficient
+- Claude Haiku 4.5 (claude-haiku-4-5-20251001) - Fast and efficient
 
 **Google (Gemini 3 - Preview):**
 - Gemini 3 Pro (Preview) - State-of-the-art reasoning with thinking controls
@@ -178,15 +178,15 @@ OmniChat/
 All services implement streaming responses using `AsyncThrowingStream<String, Error>` for real-time message delivery.
 
 - **OpenAI**: Server-Sent Events (SSE) with `data:` prefixed JSON, reasoning_effort parameter for GPT-5.2
-- **Anthropic**: SSE with `content_block_delta` events, API version 2024-10-22 (multimodal support)
+- **Anthropic**: SSE with `content_block_delta` events, API version 2023-06-01
 - **Google**: Server-Sent Events with `?alt=sse` parameter, API key in `x-goog-api-key` header, thinkingConfig support for Gemini 3
 
 ### Multimodal Support
 
-All three providers support image and PDF attachments with provider-specific implementations:
+All three providers support image and PDF attachments with native implementations:
 
-- **OpenAI**: Images sent as base64-encoded `image_url` content blocks, PDFs converted to images (max 5 pages)
-- **Anthropic**: Native support for images via `image` blocks and PDFs via `document` blocks (requires API version 2024-10-22)
+- **OpenAI**: Images via `image_url`, PDFs via native `file` type (up to 100 pages)
+- **Anthropic**: Images via `image` blocks, PDFs via `document` blocks (API version 2023-06-01)
 - **Google Gemini**: Images and PDFs sent via `inlineData` parts with appropriate MIME types
 
 **Supported file types:**
@@ -230,7 +230,6 @@ Tests can be added in the `OmniChatTests` directory (currently empty).
 - Conversations are not synced across devices
 - No message search functionality (Phase 8+ feature)
 - No custom prompt templates (future enhancement)
-- PDF attachments converted to images for OpenAI (max 5 pages)
 
 ## Future Enhancements
 
@@ -269,6 +268,6 @@ For API-specific issues, consult the provider's documentation:
 
 ## Latest Release
 
-### v0.2.0 (2026-01-27)
+### v0.2.1 (2026-01-29)
 
 See [CHANGELOG.md](CHANGELOG.md) for full release history.

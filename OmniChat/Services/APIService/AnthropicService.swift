@@ -6,7 +6,7 @@ final class AnthropicService: APIServiceProtocol {
 
     private let keychainService: KeychainService
     private let baseURL = "https://api.anthropic.com/v1/messages"
-    private let apiVersion = "2024-10-22"  // Updated for vision support
+    private let apiVersion = "2023-06-01"  // Standard API version per official docs
 
     init(keychainService: KeychainService = .shared) {
         self.keychainService = keychainService

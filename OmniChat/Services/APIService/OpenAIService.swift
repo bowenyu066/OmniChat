@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 
 /// OpenAI API service implementation
 final class OpenAIService: APIServiceProtocol {
@@ -137,17 +136,15 @@ final class OpenAIService: APIServiceProtocol {
                         ]
                     ])
                 case .pdf(let data):
-                    // Convert PDF pages to images (max 5 pages)
-                    let images = convertPDFToImages(data: data, maxPages: 5)
-                    for imageData in images {
-                        let base64 = imageData.base64EncodedString()
-                        content.append([
-                            "type": "image_url",
-                            "image_url": [
-                                "url": "data:image/png;base64,\(base64)"
-                            ]
-                        ])
-                    }
+                    // OpenAI supports native PDF via file type (added March 2025)
+                    let base64 = data.base64EncodedString()
+                    content.append([
+                        "type": "file",
+                        "file": [
+                            "filename": "document.pdf",
+                            "file_data": "data:application/pdf;base64,\(base64)"
+                        ]
+                    ])
                 }
             }
 
@@ -162,30 +159,6 @@ final class OpenAIService: APIServiceProtocol {
                 "content": message.textContent ?? ""
             ]
         }
-    }
-
-    private func convertPDFToImages(data: Data, maxPages: Int) -> [Data] {
-        guard let pdfDocument = PDFDocument(data: data) else { return [] }
-
-        var images: [Data] = []
-        let pageCount = min(pdfDocument.pageCount, maxPages)
-
-        for i in 0..<pageCount {
-            guard let page = pdfDocument.page(at: i) else { continue }
-
-            let pageRect = page.bounds(for: .mediaBox)
-            let scale: CGFloat = 2.0 // 2x for better quality
-            let size = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
-
-            let thumbnail = page.thumbnail(of: size, for: .mediaBox)
-            if let tiffData = thumbnail.tiffRepresentation,
-               let bitmapRep = NSBitmapImageRep(data: tiffData),
-               let pngData = bitmapRep.representation(using: .png, properties: [:]) {
-                images.append(pngData)
-            }
-        }
-
-        return images
     }
 
     private func validateResponse(_ response: URLResponse, data: Data) throws {
