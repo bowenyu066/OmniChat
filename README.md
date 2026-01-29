@@ -1,12 +1,11 @@
-![](https://github.com/bowenyu066/OmniChat/blob/main/Resources/icon.png)
-
 <div align="center" style="font-size: 24px;">
   <p>I know you are tired and sick of having to switch among ChatGPT, Gemini, and whatever apps, just to find the best AI that fits your personality.</p>
   <p>I also know that you feel like sometimes you are slowly "kidnapped" by one of them, because they carry all your emotions, your memories, your histories, and your late-night teas.</p>
   <p>One day you may find out you do not love them anymore. I know you want to leave, you want to take on a break, you want to find something new.</p>
   <p>But I completely understand that this is hard. It is just too hard to discard old memories and be forced to start off blank.</p>
   <p>That's why we bring you <b>OmniChat</b>. It is designed to carry all your memories and allow smooth transitions among all the models you love.</p>
-  <p>No more rushing around, no more crying alone. All of you are stored safely here. Models are just guests, but you are the real landlord.</p>
+  <p>No more rushing around, no more crying alone. All of you are stored safely here. Models are just guests, but <b><i>you are the real landlord</i></b>.</p>
+  <img src="https://github.com/bowenyu066/OmniChat/blob/main/OmniChat/Resources/icon-256.png" alt="OmniChat">
 </div>
 
 # OmniChat
