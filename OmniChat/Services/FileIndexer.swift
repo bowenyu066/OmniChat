@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import PDFKit
 
 enum FileIndexerError: LocalizedError {
     case noWorkspaceFolder
@@ -28,7 +29,8 @@ final class FileIndexer {
     private let supportedExtensions = [
         "md", "txt", "swift", "py", "js", "ts", "jsx", "tsx",
         "json", "yaml", "yml", "toml", "xml", "html", "css",
-        "sh", "bash", "go", "rs", "java", "c", "cpp", "h"
+        "sh", "bash", "go", "rs", "java", "c", "cpp", "h",
+        "pdf"
     ]
 
     /// Lines per chunk when splitting files
@@ -176,8 +178,17 @@ final class FileIndexer {
         relativeTo baseURL: URL,
         workspace: Workspace
     ) throws -> FileIndexEntry {
+        let isPDF = url.pathExtension.lowercased() == "pdf"
+
         // Read content
-        let content = try String(contentsOf: url, encoding: .utf8)
+        let content: String
+        if isPDF {
+            // Extract text from PDF
+            content = try extractTextFromPDF(url: url)
+        } else {
+            // Read as text file
+            content = try String(contentsOf: url, encoding: .utf8)
+        }
 
         // Split into lines
         let lines = content.components(separatedBy: .newlines)
@@ -210,5 +221,28 @@ final class FileIndexer {
             chunks: chunks,
             workspace: workspace
         )
+    }
+
+    /// Extracts text from a PDF file
+    private func extractTextFromPDF(url: URL) throws -> String {
+        guard let pdfDocument = PDFDocument(url: url) else {
+            throw FileIndexerError.accessDenied
+        }
+
+        var text = ""
+        let pageCount = pdfDocument.pageCount
+
+        for pageIndex in 0..<pageCount {
+            guard let page = pdfDocument.page(at: pageIndex) else { continue }
+
+            if let pageText = page.string {
+                // Add page header
+                text += "\n--- Page \(pageIndex + 1) ---\n"
+                text += pageText
+                text += "\n"
+            }
+        }
+
+        return text
     }
 }
