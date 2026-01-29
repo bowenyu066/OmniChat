@@ -6,7 +6,6 @@ enum FileIndexerError: LocalizedError {
     case noWorkspaceFolder
     case accessDenied
     case invalidBookmark
-    case iCloudFilesDownloading(count: Int)
 
     var errorDescription: String? {
         switch self {
@@ -16,8 +15,6 @@ enum FileIndexerError: LocalizedError {
             return "Cannot access workspace folder. Please select it again."
         case .invalidBookmark:
             return "Workspace folder bookmark is invalid. Please reselect the folder."
-        case .iCloudFilesDownloading(let count):
-            return "\(count) file(s) are being downloaded from iCloud. Please wait a moment and re-index."
         }
     }
 }
@@ -109,10 +106,9 @@ final class FileIndexer {
         var filesToIndex: [(url: URL, mtime: Date, size: Int64)] = []
         var filesScanned = 0
         var filesSkippedExtension = 0
-        var filesSkippedDirectory = 0
         var filesSkippedSize = 0
         var filesSkippedUnchanged = 0
-        var filesDownloadingFromCloud = 0
+        var filesSkippedError = 0
 
         // First pass: collect files to index
         while let fileURL = enumerator.nextObject() as? URL {
@@ -124,45 +120,26 @@ final class FileIndexer {
                 continue
             }
 
-            // Get file attributes
-            var resourceValues = try? fileURL.resourceValues(forKeys: [
-                .contentModificationDateKey,
-                .fileSizeKey,
-                .isDirectoryKey,
-                .ubiquitousItemDownloadingStatusKey
-            ])
-
-            // Skip directories
-            if resourceValues?.isDirectory == true {
-                filesSkippedDirectory += 1
+            // Get file attributes using FileManager
+            let attributes: [FileAttributeKey: Any]
+            do {
+                attributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+            } catch {
+                print("⚠️ FileManager.attributesOfItem failed for \(fileURL.lastPathComponent): \(error)")
+                filesSkippedError += 1
                 continue
             }
 
-            // If can't get attributes, might be iCloud file not downloaded
-            if resourceValues?.contentModificationDate == nil || resourceValues?.fileSize == nil {
-                // Check if it's an iCloud file
-                if let downloadStatus = resourceValues?.ubiquitousItemDownloadingStatus,
-                   downloadStatus != .current {
-                    // File needs to be downloaded from iCloud
-                    do {
-                        try FileManager.default.startDownloadingUbiquitousItem(at: fileURL)
-                        print("📥 Started download from iCloud: \(fileURL.lastPathComponent)")
-                        filesDownloadingFromCloud += 1
-                        continue
-                    } catch {
-                        print("⚠️ Could not start download: \(fileURL.lastPathComponent) - \(error)")
-                        continue
-                    }
-                } else {
-                    // Not iCloud or other issue
-                    print("⚠️ Could not get attributes for: \(fileURL.path)")
-                    continue
-                }
+            // Skip directories
+            if let fileType = attributes[.type] as? FileAttributeType, fileType == .typeDirectory {
+                continue
             }
 
-            guard let mtime = resourceValues?.contentModificationDate,
-                  let size = resourceValues?.fileSize as? Int64 else {
-                print("⚠️ Could not get attributes for: \(fileURL.path)")
+            // Get modification date and size from attributes
+            guard let mtime = attributes[.modificationDate] as? Date,
+                  let size = attributes[.size] as? Int64 else {
+                print("⚠️ Could not get mtime/size from attributes for: \(fileURL.lastPathComponent)")
+                filesSkippedError += 1
                 continue
             }
 
@@ -192,17 +169,10 @@ final class FileIndexer {
         print("📊 Scan complete:")
         print("  - Total scanned: \(filesScanned)")
         print("  - Skipped (extension): \(filesSkippedExtension)")
-        print("  - Skipped (directory): \(filesSkippedDirectory)")
+        print("  - Skipped (error): \(filesSkippedError)")
         print("  - Skipped (too large): \(filesSkippedSize)")
         print("  - Skipped (unchanged): \(filesSkippedUnchanged)")
-        print("  - Downloading from iCloud: \(filesDownloadingFromCloud)")
         print("  - To index: \(filesToIndex.count)")
-
-        if filesDownloadingFromCloud > 0 {
-            print("⏳ \(filesDownloadingFromCloud) files are being downloaded from iCloud.")
-            print("   Please wait a few moments and re-index to process them.")
-            throw FileIndexerError.iCloudFilesDownloading(count: filesDownloadingFromCloud)
-        }
 
         // Second pass: index files with progress
         let totalFiles = filesToIndex.count
