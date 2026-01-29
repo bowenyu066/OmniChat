@@ -6,6 +6,9 @@ struct ChatView: View {
     @Binding var selectedModel: AIModel
 
     @Environment(\.modelContext) private var modelContext
+    @Query(filter: #Predicate<MemoryItem> { !$0.isDeleted }, sort: \MemoryItem.updatedAt, order: .reverse)
+    private var allMemories: [MemoryItem]
+
     @State private var inputText = ""
     @State private var pendingAttachments: [PendingAttachment] = []
     @State private var isLoading = false
@@ -123,9 +126,65 @@ struct ChatView: View {
     }
 
     private func getSystemPrompt(for provider: AIProvider) -> String {
-        return """
+        var prompt = """
         You are a helpful AI assistant. Keep responses clear and concise.
         """
+
+        // Include memories based on config
+        let includedMemories = getIncludedMemories()
+        if !includedMemories.isEmpty {
+            prompt += "\n\n## User Memory\nThe following information has been provided by the user as context. Use this knowledge when relevant:\n"
+
+            for memory in includedMemories {
+                prompt += "\n### \(memory.type.rawValue): \(memory.title)\n\(memory.body)\n"
+            }
+        }
+
+        return prompt
+    }
+
+    /// Returns memories that should be included based on the current config
+    private func getIncludedMemories() -> [MemoryItem] {
+        var included: [MemoryItem] = []
+
+        for memory in allMemories {
+            // Always include pinned memories
+            if memory.isPinned {
+                included.append(memory)
+                continue
+            }
+
+            // Check if specifically selected
+            if memoryContextConfig.specificMemoryIds.contains(memory.id) {
+                included.append(memory)
+                continue
+            }
+
+            // Check type-based inclusion
+            let shouldIncludeByType: Bool
+            if memoryContextConfig.includeAllMemories {
+                shouldIncludeByType = true
+            } else {
+                switch memory.type {
+                case .fact:
+                    shouldIncludeByType = memoryContextConfig.includeFacts
+                case .preference:
+                    shouldIncludeByType = memoryContextConfig.includePreferences
+                case .project:
+                    shouldIncludeByType = memoryContextConfig.includeProjects
+                case .instruction:
+                    shouldIncludeByType = memoryContextConfig.includeInstructions
+                case .reference:
+                    shouldIncludeByType = memoryContextConfig.includeReferences
+                }
+            }
+
+            if shouldIncludeByType {
+                included.append(memory)
+            }
+        }
+
+        return included
     }
 
     // MARK: - Message Actions
