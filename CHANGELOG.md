@@ -2,7 +2,7 @@
 
 All notable changes to OmniChat will be documented in this file.
 
-## v1.5.0 (2026-01-28) - Memory-First Design & UX Improvements
+## v0.2.0 (2026-01-28) - Memory-First Design & UX Improvements
 
 **Added:**
 - Memory system with full CRUD operations for user knowledge persistence
