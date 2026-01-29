@@ -2,6 +2,55 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v1.5.0 (2026-01-28) - Memory-First Design & UX Improvements
+
+**Added:**
+- Memory system with full CRUD operations for user knowledge persistence
+- Memory Panel: Separate window for managing all memories (⌘M)
+- Chat Memory Context: Right-side panel to control memory access per conversation
+- Memory types: Facts, Preferences, Projects, Instructions, References
+- Memory search and filtering by type, scope, pinned status, and tags
+- Soft delete for memories with recovery support
+- "Save to Memory" action on assistant messages
+- Detailed customization window for fine-grained memory/conversation access control
+- Message action buttons: Copy, Audio (TTS), Retry, Switch Model, Branch to New Chat
+- Text-to-speech for AI responses using macOS NSSpeechSynthesizer
+- Branch conversation feature to duplicate chat history up to a specific message
+- Model switching with in-place response regeneration
+- Retry button to regenerate responses with same model
+- Auto-save API keys with 500ms debounce and visual feedback ("Saving...", "Saved")
+- Session-based authentication for Settings (authenticate once per session)
+- Keychain migration system to prevent repeated password prompts
+- Authentication gate for Settings page with Touch ID/password fallback
+
+**Changed:**
+- Removed user/assistant avatars from messages for cleaner UI
+- Removed "You" label from user messages (timestamp only)
+- Title generation now only happens once after first assistant response
+- Model selector moved to right side of chat header
+- Sidebar now includes "Memory Panel" button at the bottom
+- Auth flow simplified to single Touch ID/password prompt with automatic fallback
+- Keychain access changed to `kSecAttrAccessibleAfterFirstUnlock` (no repeated prompts)
+- API keys now display save status indicators (idle/saving/saved/error)
+- Settings page requires one-time authentication per session (clears on exit)
+- App startup authentication only required if 30+ days since last auth
+
+**Removed:**
+- Delete button from message actions (too dangerous, caused accidental deletions)
+- Repeated title regeneration (now fixed after first response)
+- Multiple keychain authentication prompts for API key reads
+
+**Technical:**
+- New models: `MemoryItem`, `MemoryType`, `MemoryScope`, `Workspace`
+- New views: `MemoryPanelView`, `MemoryEditorView`, `MemoryFilterBar`, `MemoryRow`, `ChatMemoryContextView`
+- Updated `AuthManager` with session-based settings auth and 30-day grace period
+- Updated `KeychainService` with migration support and improved access settings
+- Updated `Conversation` model with `hasTitleBeenGenerated` flag
+- Memory Panel opens as separate window using SwiftUI Window scene
+- Three-column layout with HSplitView for chat + memory context
+- MessageActionBar component for assistant message actions
+- SpeechService singleton for text-to-speech functionality
+
 ## v0.1.4 (2026-01-27) - AI Title Generation & App Improvements
 
 **Added:**

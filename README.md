@@ -4,16 +4,39 @@ A native macOS SwiftUI application that unifies ChatGPT, Claude, and Gemini APIs
 
 ## Features
 
+### Core Features
 - **Multiple AI Providers**: Seamlessly switch between OpenAI (ChatGPT), Anthropic (Claude), and Google (Gemini)
-- **AI-Powered Titles**: Automatic conversation title generation using GPT-4o
+- **AI-Powered Titles**: Automatic conversation title generation using GPT-4o (one-time per conversation)
 - **Multimodal Support**: Attach images and PDFs to your messages with drag-and-drop, paste, or file picker
 - **Local Chat History**: All conversations stored securely locally using SwiftData
 - **Streaming Responses**: Real-time message streaming for a responsive user experience
 - **Markdown Rendering**: Full markdown support with syntax-highlighted code blocks
 - **LaTeX Support**: Render mathematical formulas with KaTeX (both inline and display modes)
-- **Secure API Keys**: Store API keys securely in macOS Keychain with App Sandbox
 - **Keyboard Shortcuts**: Navigate and chat efficiently with intuitive shortcuts
 - **Model Selection**: Choose from all available models for each provider with a dropdown selector
+
+### Memory System (v1.5)
+- **Memory Management**: Create, edit, and organize memories in a dedicated panel window
+- **Memory Types**: Facts, Preferences, Projects, Instructions, References
+- **Chat Context Control**: Grant selective memory access per conversation with quick toggles
+- **Detailed Customization**: Fine-grained control over which memories and conversations are accessible
+- **Save from Chat**: Convert assistant responses into permanent memories with one click
+- **Search & Filter**: Find memories by type, scope, tags, or pinned status
+
+### Message Actions (v1.5)
+- **Copy to Clipboard**: Quick copy of any message content
+- **Text-to-Speech**: Listen to AI responses with macOS speech synthesis
+- **Retry**: Regenerate response with the same model
+- **Switch Model**: Change AI model and regenerate response in-place
+- **Branch Conversation**: Duplicate chat history up to any point as a new conversation
+- **Save to Memory**: Store important responses as permanent knowledge
+
+### Authentication & Security
+- **One-Time App Auth**: Touch ID/password required only once per 30 days
+- **Session-Based Settings**: Authenticate once to access Settings, valid until window closes
+- **Auto-Save API Keys**: Keys save automatically 500ms after typing with visual feedback
+- **Secure Keychain Storage**: API keys stored with `kSecAttrAccessibleAfterFirstUnlock` (no repeated prompts)
+- **Migration System**: Automatic one-time migration for existing keys to new access settings
 
 ## Requirements
 
