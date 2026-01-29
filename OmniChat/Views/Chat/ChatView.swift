@@ -127,18 +127,37 @@ struct ChatView: View {
         }
     }
 
-    private func getSystemPrompt(for provider: AIProvider) -> String {
+    private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") -> String {
         var prompt = """
         You are a helpful AI assistant. Keep responses clear and concise.
         """
 
-        // Include memories based on config
+        // Layer 1: Include memories based on config (highest priority)
         let includedMemories = getIncludedMemories()
         if !includedMemories.isEmpty {
             prompt += "\n\n## User Memory\nThe following information has been provided by the user as context. Use this knowledge when relevant:\n"
 
             for memory in includedMemories {
                 prompt += "\n### \(memory.type.rawValue): \(memory.title)\n\(memory.body)\n"
+            }
+        }
+
+        // Layer 3: Include workspace files if workspace is selected
+        if let workspace = conversation.workspace, !userPrompt.isEmpty {
+            let fileSnippets = FileRetriever.shared.retrieveSnippets(
+                for: userPrompt,
+                workspace: workspace,
+                limit: 5
+            )
+
+            if !fileSnippets.isEmpty {
+                prompt += "\n\n## Workspace Files\nThe following code snippets from the workspace may be relevant. Always cite files when referencing them:\n"
+
+                for snippet in fileSnippets {
+                    prompt += "\n### \(snippet.citation)\n```\n\(snippet.content)\n```\n"
+                }
+
+                prompt += "\nWhen referencing these files, always use the format `file.swift:line` for clarity.\n"
             }
         }
 
@@ -238,9 +257,15 @@ struct ChatView: View {
         var chatMessages = sortedMessages[0..<assistantIndex]
             .map { ChatMessage(from: $0) }
 
+        // Find the user prompt that triggered this response (the last user message before this assistant message)
+        let userPrompt = sortedMessages[0..<assistantIndex]
+            .reversed()
+            .first(where: { $0.role == .user })?
+            .content ?? ""
+
         // Inject system prompt at the beginning if not present
         if !chatMessages.contains(where: { $0.role == "system" }) {
-            let systemPrompt = getSystemPrompt(for: modelToUse.provider)
+            let systemPrompt = getSystemPrompt(for: modelToUse.provider, userPrompt: userPrompt)
             chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
         }
 
@@ -337,7 +362,7 @@ struct ChatView: View {
 
         // Inject system prompt at the beginning if not present
         if !chatMessages.contains(where: { $0.role == "system" }) {
-            let systemPrompt = getSystemPrompt(for: selectedModel.provider)
+            let systemPrompt = getSystemPrompt(for: selectedModel.provider, userPrompt: userMessage.content)
             chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
         }
 
