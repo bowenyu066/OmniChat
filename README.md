@@ -15,7 +15,7 @@ A native macOS SwiftUI application that unifies ChatGPT, Claude, and Gemini APIs
 - **Keyboard Shortcuts**: Navigate and chat efficiently with intuitive shortcuts
 - **Model Selection**: Choose from all available models for each provider with a dropdown selector
 
-### Memory System (v1.5)
+### Memory System (v0.2)
 - **Memory Management**: Create, edit, and organize memories in a dedicated panel window
 - **Memory Types**: Facts, Preferences, Projects, Instructions, References
 - **Chat Context Control**: Grant selective memory access per conversation with quick toggles
@@ -23,7 +23,7 @@ A native macOS SwiftUI application that unifies ChatGPT, Claude, and Gemini APIs
 - **Save from Chat**: Convert assistant responses into permanent memories with one click
 - **Search & Filter**: Find memories by type, scope, tags, or pinned status
 
-### Message Actions (v1.5)
+### Message Actions (v0.2)
 - **Copy to Clipboard**: Quick copy of any message content
 - **Text-to-Speech**: Listen to AI responses with macOS speech synthesis
 - **Retry**: Regenerate response with the same model
@@ -269,17 +269,6 @@ For API-specific issues, consult the provider's documentation:
 
 ## Latest Release
 
-### v0.1.4 (2026-01-27) - AI Title Generation & App Improvements
-
-**Added:**
-- AI-powered conversation title generation using GPT-4o
-- Title generation progress indicator in toolbar
-- Custom app icons for all macOS sizes
-- Improved clipboard image paste support for screenshots
-
-**Changed:**
-- Re-enabled App Sandbox with proper entitlements
-- Simplified system prompts for better performance
-- In-memory API key caching for faster access
+### v0.2.0 (2026-01-27)
 
 See [CHANGELOG.md](CHANGELOG.md) for full release history.
