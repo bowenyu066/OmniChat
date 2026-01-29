@@ -6,6 +6,7 @@ struct SidebarView: View {
     let onNewChat: () -> Void
     let onDelete: (Conversation) -> Void
     let onOpenMemoryPanel: () -> Void
+    let onOpenWorkspacePanel: () -> Void
 
     @State private var searchText = ""
     @State private var editingConversationId: UUID?
@@ -52,18 +53,34 @@ struct SidebarView: View {
 
             Divider()
 
-            // Memory Panel button at the bottom
-            Button(action: onOpenMemoryPanel) {
-                HStack {
-                    Image(systemName: "brain.head.profile")
-                    Text("Memory Panel")
-                    Spacer()
+            // Panels section at the bottom
+            VStack(spacing: 0) {
+                Button(action: onOpenMemoryPanel) {
+                    HStack {
+                        Image(systemName: "brain.head.profile")
+                        Text("Memory Panel")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .buttonStyle(.plain)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+
+                Divider()
+
+                Button(action: onOpenWorkspacePanel) {
+                    HStack {
+                        Image(systemName: "folder.badge.gearshape")
+                        Text("Workspace Panel")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
             }
-            .buttonStyle(.plain)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         }
         .navigationTitle("Chats")
         .toolbar {
@@ -86,6 +103,7 @@ struct SidebarView: View {
         selectedConversation: .constant(nil),
         onNewChat: {},
         onDelete: { _ in },
-        onOpenMemoryPanel: {}
+        onOpenMemoryPanel: {},
+        onOpenWorkspacePanel: {}
     )
 }

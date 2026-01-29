@@ -18,7 +18,8 @@ struct MainView: View {
                 selectedConversation: $selectedConversation,
                 onNewChat: createNewConversation,
                 onDelete: deleteConversation,
-                onOpenMemoryPanel: { openWindow(id: "memory-panel") }
+                onOpenMemoryPanel: { openWindow(id: "memory-panel") },
+                onOpenWorkspacePanel: { openWindow(id: "workspace-panel") }
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 260, max: 350)
         } detail: {

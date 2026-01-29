@@ -211,6 +211,12 @@ struct OmniChatApp: App {
             MemoryPanelView()
         }
         .modelContainer(sharedModelContainer)
+
+        // Workspace Panel Window
+        Window("Workspace Panel", id: "workspace-panel") {
+            WorkspacePanelView()
+        }
+        .modelContainer(sharedModelContainer)
         .defaultSize(width: 600, height: 700)
     }
 
