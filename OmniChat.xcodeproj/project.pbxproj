@@ -44,6 +44,7 @@
 		A1000024 /* ChatMemoryContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024 /* ChatMemoryContextView.swift */; };
 		A1000026 /* SecurityScopedBookmarkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026 /* SecurityScopedBookmarkService.swift */; };
 		A1000027 /* FileIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027 /* FileIndexer.swift */; };
+		A1000028 /* FileRetriever.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000028 /* FileRetriever.swift */; };
 		A17B4A5B /* WorkspacePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DFB60D /* WorkspacePanelView.swift */; };
 		A199A2B2 /* WorkspaceCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BADB46 /* WorkspaceCreationView.swift */; };
 		A1C222CC /* WorkspaceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B39E0F /* WorkspaceDetailView.swift */; };
@@ -89,6 +90,7 @@
 		A2000024 /* ChatMemoryContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMemoryContextView.swift; sourceTree = "<group>"; };
 		A2000026 /* SecurityScopedBookmarkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmarkService.swift; sourceTree = "<group>"; };
 		A2000027 /* FileIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIndexer.swift; sourceTree = "<group>"; };
+		A2000028 /* FileRetriever.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileRetriever.swift; sourceTree = "<group>"; };
 		A2DFB60D /* WorkspacePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePanelView.swift; sourceTree = "<group>"; };
 		A2BADB46 /* WorkspaceCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceCreationView.swift; sourceTree = "<group>"; };
 		A2B39E0F /* WorkspaceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDetailView.swift; sourceTree = "<group>"; };
@@ -228,6 +230,7 @@
 				A200001C /* TitleGenerationService.swift */,
 				A2000026 /* SecurityScopedBookmarkService.swift */,
 				A2000027 /* FileIndexer.swift */,
+				A2000028 /* FileRetriever.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -370,6 +373,7 @@
 				A1000024 /* ChatMemoryContextView.swift in Sources */,
 				A1000026 /* SecurityScopedBookmarkService.swift in Sources */,
 				A1000027 /* FileIndexer.swift in Sources */,
+				A1000028 /* FileRetriever.swift in Sources */,
 				A17B4A5B /* WorkspacePanelView.swift in Sources */,
 				A199A2B2 /* WorkspaceCreationView.swift in Sources */,
 				A1C222CC /* WorkspaceDetailView.swift in Sources */,
