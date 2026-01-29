@@ -91,21 +91,34 @@ final class FileIndexer {
         modelContext: ModelContext,
         onProgress: ((Int, Int) -> Void)?
     ) throws {
+        print("🔍 Starting indexing for: \(folderURL.path)")
+
         // Enumerate files
         guard let enumerator = FileManager.default.enumerator(
             at: folderURL,
             includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
+            print("❌ Failed to create enumerator")
             throw FileIndexerError.accessDenied
         }
 
         var filesToIndex: [(url: URL, mtime: Date, size: Int64)] = []
+        var filesScanned = 0
+        var filesSkippedExtension = 0
+        var filesSkippedDirectory = 0
+        var filesSkippedSize = 0
+        var filesSkippedUnchanged = 0
 
         // First pass: collect files to index
         while let fileURL = enumerator.nextObject() as? URL {
+            filesScanned += 1
+
             // Skip if not supported extension
-            guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else { continue }
+            guard supportedExtensions.contains(fileURL.pathExtension.lowercased()) else {
+                filesSkippedExtension += 1
+                continue
+            }
 
             // Get file attributes
             let resourceValues = try? fileURL.resourceValues(forKeys: [
@@ -115,13 +128,23 @@ final class FileIndexer {
             ])
 
             // Skip directories
-            if resourceValues?.isDirectory == true { continue }
+            if resourceValues?.isDirectory == true {
+                filesSkippedDirectory += 1
+                continue
+            }
 
             guard let mtime = resourceValues?.contentModificationDate,
-                  let size = resourceValues?.fileSize as? Int64 else { continue }
+                  let size = resourceValues?.fileSize as? Int64 else {
+                print("⚠️ Could not get attributes for: \(fileURL.path)")
+                continue
+            }
 
             // Skip files that are too large
-            if size > maxFileSize { continue }
+            if size > maxFileSize {
+                print("⚠️ Skipping large file (\(size) bytes): \(fileURL.lastPathComponent)")
+                filesSkippedSize += 1
+                continue
+            }
 
             // Check if already indexed and unchanged
             let relativePath = fileURL.path.replacingOccurrences(
@@ -131,11 +154,21 @@ final class FileIndexer {
 
             if let existing = workspace.fileEntries.first(where: { $0.relativePath == relativePath }),
                existing.mtime == mtime {
+                filesSkippedUnchanged += 1
                 continue  // Skip unchanged file
             }
 
+            print("✅ Will index: \(fileURL.lastPathComponent) (\(size) bytes)")
             filesToIndex.append((fileURL, mtime, size))
         }
+
+        print("📊 Scan complete:")
+        print("  - Total scanned: \(filesScanned)")
+        print("  - Skipped (extension): \(filesSkippedExtension)")
+        print("  - Skipped (directory): \(filesSkippedDirectory)")
+        print("  - Skipped (too large): \(filesSkippedSize)")
+        print("  - Skipped (unchanged): \(filesSkippedUnchanged)")
+        print("  - To index: \(filesToIndex.count)")
 
         // Second pass: index files with progress
         let totalFiles = filesToIndex.count
