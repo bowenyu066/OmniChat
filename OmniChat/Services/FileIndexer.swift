@@ -175,8 +175,13 @@ final class FileIndexer {
         print("  - To index: \(filesToIndex.count)")
 
         // Second pass: index files with progress
+        print("🔄 Starting to index \(filesToIndex.count) files...")
         let totalFiles = filesToIndex.count
+        var successCount = 0
+        var failCount = 0
+
         for (index, file) in filesToIndex.enumerated() {
+            print("📝 Indexing [\(index + 1)/\(totalFiles)]: \(file.url.lastPathComponent)")
             onProgress?(index + 1, totalFiles)
 
             do {
@@ -200,11 +205,17 @@ final class FileIndexer {
                 // Insert new entry
                 modelContext.insert(entry)
                 workspace.fileEntries.append(entry)
+
+                print("   ✓ Success: \(entry.chunks.count) chunks")
+                successCount += 1
             } catch {
                 // Log error but continue indexing other files
-                print("Failed to index \(file.url.path): \(error)")
+                print("   ❌ Failed to index \(file.url.lastPathComponent): \(error)")
+                failCount += 1
             }
         }
+
+        print("✅ Indexing complete: \(successCount) succeeded, \(failCount) failed")
     }
 
     /// Indexes a single file
@@ -216,11 +227,13 @@ final class FileIndexer {
         workspace: Workspace
     ) throws -> FileIndexEntry {
         let isPDF = url.pathExtension.lowercased() == "pdf"
+        print("      🔧 Processing file: isPDF=\(isPDF)")
 
         // Read content
         let content: String
         if isPDF {
             // Extract text from PDF
+            print("      📖 Extracting PDF text...")
             content = try extractTextFromPDF(url: url)
         } else {
             // Read as text file
@@ -229,6 +242,7 @@ final class FileIndexer {
 
         // Split into lines
         let lines = content.components(separatedBy: .newlines)
+        print("      📐 Split into \(lines.count) lines")
 
         // Create chunks
         var chunks: [FileChunk] = []
@@ -243,6 +257,7 @@ final class FileIndexer {
                 endLine: endIndex
             ))
         }
+        print("      🧩 Created \(chunks.count) chunks")
 
         // Calculate relative path
         let relativePath = url.path.replacingOccurrences(
@@ -263,11 +278,13 @@ final class FileIndexer {
     /// Extracts text from a PDF file
     private func extractTextFromPDF(url: URL) throws -> String {
         guard let pdfDocument = PDFDocument(url: url) else {
+            print("      ⚠️ Could not load PDF document")
             throw FileIndexerError.accessDenied
         }
 
         var text = ""
         let pageCount = pdfDocument.pageCount
+        print("      📄 PDF has \(pageCount) pages")
 
         for pageIndex in 0..<pageCount {
             guard let page = pdfDocument.page(at: pageIndex) else { continue }
@@ -280,6 +297,7 @@ final class FileIndexer {
             }
         }
 
+        print("      📏 Extracted \(text.count) characters")
         return text
     }
 }
