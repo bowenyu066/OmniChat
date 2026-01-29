@@ -8,6 +8,8 @@ struct ChatView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<MemoryItem> { !$0.isDeleted }, sort: \MemoryItem.updatedAt, order: .reverse)
     private var allMemories: [MemoryItem]
+    @Query(sort: \Workspace.name)
+    private var allWorkspaces: [Workspace]
 
     @State private var inputText = ""
     @State private var pendingAttachments: [PendingAttachment] = []
@@ -35,10 +37,10 @@ struct ChatView: View {
 
     private var chatContent: some View {
         VStack(spacing: 0) {
-            // Header with title and model selector
+            // Header with title, model selector, and workspace selector
             ChatHeaderView(
-                title: conversation.title,
-                isTitleGenerating: conversation.isTitleGenerating,
+                conversation: conversation,
+                workspaces: allWorkspaces,
                 selectedModel: $selectedModel,
                 showMemoryPanel: $showMemoryPanel
             )
@@ -384,26 +386,32 @@ struct ChatView: View {
 // MARK: - Chat Header View
 
 struct ChatHeaderView: View {
-    let title: String
-    let isTitleGenerating: Bool
+    @Bindable var conversation: Conversation
+    let workspaces: [Workspace]
     @Binding var selectedModel: AIModel
     @Binding var showMemoryPanel: Bool
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             // Title on the left
             HStack(spacing: 8) {
-                Text(title)
+                Text(conversation.title)
                     .font(.headline)
                     .lineLimit(1)
 
-                if isTitleGenerating {
+                if conversation.isTitleGenerating {
                     ProgressView()
                         .scaleEffect(0.6)
                 }
             }
 
             Spacer()
+
+            // Workspace selector
+            WorkspacePicker(
+                selectedWorkspace: $conversation.workspace,
+                workspaces: workspaces
+            )
 
             // Model selector
             ModelSelectorView(selectedModel: $selectedModel)
@@ -419,5 +427,60 @@ struct ChatHeaderView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+}
+
+// MARK: - Workspace Picker
+
+struct WorkspacePicker: View {
+    @Binding var selectedWorkspace: Workspace?
+    let workspaces: [Workspace]
+
+    var body: some View {
+        Menu {
+            Button("None") {
+                selectedWorkspace = nil
+            }
+
+            if !workspaces.isEmpty {
+                Divider()
+
+                ForEach(workspaces) { workspace in
+                    Button(action: {
+                        selectedWorkspace = workspace
+                    }) {
+                        HStack {
+                            Text(workspace.name)
+                            if selectedWorkspace?.id == workspace.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: selectedWorkspace == nil ? "folder" : "folder.fill")
+                    .foregroundColor(selectedWorkspace == nil ? .secondary : .accentColor)
+                if let workspace = selectedWorkspace {
+                    Text(workspace.name)
+                        .font(.caption)
+                        .lineLimit(1)
+                } else {
+                    Text("No workspace")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(6)
+        }
+        .menuStyle(.borderlessButton)
+        .help("Select workspace for file access")
     }
 }
