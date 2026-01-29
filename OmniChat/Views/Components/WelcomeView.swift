@@ -6,7 +6,7 @@ struct WelcomeView: View {
     private let suggestions = [
         ("lightbulb", "Explain a concept", "Help me understand quantum computing"),
         ("doc.text", "Write content", "Draft an email to my team about..."),
-        ("code", "Write code", "Create a Python script that..."),
+        ("desktopcomputer", "Write code", "Create a Python script that..."),
         ("chart.bar", "Analyze data", "What insights can you find in..."),
     ]
 

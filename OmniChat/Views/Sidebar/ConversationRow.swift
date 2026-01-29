@@ -31,7 +31,7 @@ struct ConversationRow: View {
             }
         }
         .padding(.vertical, 4)
-        .onChange(of: isFocused) { _, newValue in
+        .onChange(of: isFocused) { newValue in
             if !newValue && isEditing {
                 saveTitle()
             }

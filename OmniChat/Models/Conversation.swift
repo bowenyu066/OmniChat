@@ -16,12 +16,15 @@ final class Conversation {
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
 
-    init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(), updatedAt: Date = Date(), messages: [Message] = []) {
+    var workspace: Workspace?  // Optional workspace association
+
+    init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(), updatedAt: Date = Date(), messages: [Message] = [], workspace: Workspace? = nil) {
         self.id = id
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.messages = messages
+        self.workspace = workspace
     }
 
     /// Generate title using conversation context (user + assistant), without setting a temporary title first.

@@ -42,8 +42,6 @@
 		A1000022 /* MemoryPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000022 /* MemoryPanelView.swift */; };
 		A1000023 /* MemoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023 /* MemoryEditorView.swift */; };
 		A1000024 /* ChatMemoryContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024 /* ChatMemoryContextView.swift */; };
-		A1000026 /* SecurityScopedBookmarkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026 /* SecurityScopedBookmarkService.swift */; };
-		A1000027 /* FileIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027 /* FileIndexer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -84,8 +82,6 @@
 		A2000022 /* MemoryPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPanelView.swift; sourceTree = "<group>"; };
 		A2000023 /* MemoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEditorView.swift; sourceTree = "<group>"; };
 		A2000024 /* ChatMemoryContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMemoryContextView.swift; sourceTree = "<group>"; };
-		A2000026 /* SecurityScopedBookmarkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmarkService.swift; sourceTree = "<group>"; };
-		A2000027 /* FileIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIndexer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -219,8 +215,6 @@
 			children = (
 				A2000012 /* KeychainService.swift */,
 				A200001C /* TitleGenerationService.swift */,
-				A2000026 /* SecurityScopedBookmarkService.swift */,
-				A2000027 /* FileIndexer.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -351,8 +345,6 @@
 				A1000022 /* MemoryPanelView.swift in Sources */,
 				A1000023 /* MemoryEditorView.swift in Sources */,
 				A1000024 /* ChatMemoryContextView.swift in Sources */,
-				A1000026 /* SecurityScopedBookmarkService.swift in Sources */,
-				A1000027 /* FileIndexer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,7 +379,7 @@
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
 				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTECTS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;

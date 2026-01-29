@@ -29,7 +29,9 @@ final class Workspace {
     @Relationship(deleteRule: .cascade, inverse: \MemoryItem.workspace)
     var memories: [MemoryItem] = []
 
-    // Note: FileIndexEntry relationship will be added in Milestone 2
+    @Relationship(deleteRule: .cascade, inverse: \FileIndexEntry.workspace)
+    var fileEntries: [FileIndexEntry] = []
+
     // Note: Conversation relationship will be added when we modify Conversation model
 
     init(

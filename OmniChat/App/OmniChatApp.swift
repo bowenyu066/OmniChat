@@ -106,6 +106,7 @@ struct OmniChatApp: App {
             Attachment.self,
             MemoryItem.self,
             Workspace.self,
+            FileIndexEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
