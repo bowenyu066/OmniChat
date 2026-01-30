@@ -2,6 +2,29 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.2.2-beta (2026-01-29) - Critical Bug Fixes & Bulk Delete
+
+**Fixed:**
+- **Critical:** Messages no longer disappear after sending (SwiftData persistence fix)
+- **Critical:** Messages now go to the correct conversation (SwiftUI view identity fix with `.id()` modifier)
+- "Pin to top" now actually brings pinned memories to the top of the list
+- Workspace Panel toolbar layout fixed (New Workspace button was hidden)
+
+**Added:**
+- Bulk delete for Memory Panel: Edit mode with Select All checkbox and Delete Selected button
+- Bulk delete for Workspace Panel: Same functionality for managing workspaces
+- Selection counter shows number of items selected in edit mode
+
+**Changed:**
+- Memory rows hide individual Edit button when in bulk edit mode
+- Context menus disabled during edit mode for cleaner UX
+
+**Technical:**
+- Messages now explicitly inserted into modelContext before relationship assignment
+- Explicit `message.conversation = conversation` relationship binding
+- Added `.id(conversation.id)` to ChatView to force view recreation on conversation switch
+- Memory list now sorted with pinned items first, then by updatedAt
+
 ## v0.2.1 (2026-01-29) - Workspace Fixes & Native PDF Support
 
 **Added:**
