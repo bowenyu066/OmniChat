@@ -85,16 +85,6 @@ struct WorkspacePanelView: View {
                                 }
                             )
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if isEditMode {
-                                if selectedWorkspaceIDs.contains(workspace.id) {
-                                    selectedWorkspaceIDs.remove(workspace.id)
-                                } else {
-                                    selectedWorkspaceIDs.insert(workspace.id)
-                                }
-                            }
-                        }
                         .tag(workspace.id)
                     }
                 }

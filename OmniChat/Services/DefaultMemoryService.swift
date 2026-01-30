@@ -77,12 +77,14 @@ final class DefaultMemoryService {
         // Fetch all memories marked as default
         let descriptor = FetchDescriptor<MemoryItem>(
             predicate: #Predicate { memory in
-                memory.isDefaultSelected && !memory.isDeleted
+                memory.isDefaultSelected == true && memory.isDeleted == false
             }
         )
 
         if let defaultMemories = try? modelContext.fetch(descriptor) {
+            print("[Memory] Found \(defaultMemories.count) auto-selected memories")
             for memory in defaultMemories {
+                print("[Memory] Auto-selecting: \(memory.title) (type: \(memory.type.rawValue))")
                 config.specificMemoryIds.insert(memory.id)
 
                 // Also enable the type toggle

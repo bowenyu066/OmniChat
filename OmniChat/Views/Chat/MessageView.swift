@@ -54,6 +54,15 @@ struct MessageView: View {
                         .background(userMessageBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .foregroundStyle(.white)
+
+                    // Copy button for user messages
+                    Button(action: copyToClipboard) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy to clipboard")
                 }
             } else {
                 // Assistant messages: markdown rendering
