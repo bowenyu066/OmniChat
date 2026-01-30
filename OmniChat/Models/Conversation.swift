@@ -12,11 +12,26 @@ final class Conversation {
     var updatedAt: Date
     var isTitleGenerating: Bool = false
     var hasTitleBeenGenerated: Bool = false  // Track if title was already generated
+    var memoryContextConfigData: Data?  // Persisted MemoryContextConfig
 
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
 
     var workspace: Workspace?  // Optional workspace association
+
+    /// Computed property for memory context config
+    var memoryContextConfig: MemoryContextConfig {
+        get {
+            guard let data = memoryContextConfigData,
+                  let config = try? JSONDecoder().decode(MemoryContextConfig.self, from: data) else {
+                return MemoryContextConfig()
+            }
+            return config
+        }
+        set {
+            memoryContextConfigData = try? JSONEncoder().encode(newValue)
+        }
+    }
 
     init(id: UUID = UUID(), title: String = "New Chat", createdAt: Date = Date(), updatedAt: Date = Date(), messages: [Message] = [], workspace: Workspace? = nil) {
         self.id = id

@@ -14,6 +14,8 @@ struct MemoryEditorView: View {
     @State private var tagsString: String
     @State private var scope: MemoryScope
     @State private var selectedWorkspace: Workspace?
+    @State private var isDefaultSelected: Bool
+    @State private var isPinned: Bool
 
     init(memory: MemoryItem?) {
         self.memory = memory
@@ -25,6 +27,8 @@ struct MemoryEditorView: View {
         _tagsString = State(initialValue: memory?.tagsString ?? "")
         _scope = State(initialValue: memory?.scope ?? .global)
         _selectedWorkspace = State(initialValue: memory?.workspace)
+        _isDefaultSelected = State(initialValue: memory?.isDefaultSelected ?? false)
+        _isPinned = State(initialValue: memory?.isPinned ?? false)
     }
 
     var isValid: Bool {
@@ -96,6 +100,18 @@ struct MemoryEditorView: View {
                         }
                     }
                 }
+
+                Section("Options") {
+                    Toggle("Auto-select in new conversations", isOn: $isDefaultSelected)
+                    Text("When enabled, this memory will be automatically selected in newly created conversations")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Toggle("Pin to top", isOn: $isPinned)
+                    Text("Pinned memories appear at the top of the list")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             .formStyle(.grouped)
             .navigationTitle(memory == nil ? "New Memory" : "Edit Memory")
@@ -128,6 +144,8 @@ struct MemoryEditorView: View {
             memory.type = selectedType
             memory.scope = scope
             memory.setTags(from: tagsString)
+            memory.isDefaultSelected = isDefaultSelected
+            memory.isPinned = isPinned
             memory.updatedAt = Date()
 
             // Update workspace relationship
@@ -145,6 +163,8 @@ struct MemoryEditorView: View {
                 scope: scope
             )
             newMemory.setTags(from: tagsString)
+            newMemory.isDefaultSelected = isDefaultSelected
+            newMemory.isPinned = isPinned
 
             // Set workspace relationship
             if case .workspace(let workspaceId) = scope {

@@ -14,6 +14,7 @@ final class MemoryItem {
     var updatedAt: Date = Date()
     var isDeleted: Bool = false  // Soft delete
     var isPinned: Bool = false   // Priority inclusion
+    var isDefaultSelected: Bool = false  // Auto-select in new conversations
 
     // Relationships
     var workspace: Workspace?  // Optional workspace scoping

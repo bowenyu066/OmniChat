@@ -40,9 +40,9 @@ final class TitleGenerationService {
 
         do {
             let title = try await callChatCompletionsWithMessages(
-                model: "gpt-4o",
-                paramKey: "max_tokens",
-                maxTokens: 16,
+                model: "gpt-5-nano",
+                paramKey: "max_output_tokens",
+                maxTokens: 1024,
                 messages: messagesPayload,
                 apiKey: apiKey
             )

@@ -1,216 +1,103 @@
 import SwiftUI
 import WebKit
 
+/// Custom WKWebView that doesn't capture scroll events
+class NonScrollingWebView: WKWebView {
+    // Cache the parent scroll view to avoid repeated lookups
+    private weak var cachedParentScrollView: NSScrollView?
+
+    override func scrollWheel(with event: NSEvent) {
+        // Find and cache the parent NSScrollView
+        if cachedParentScrollView == nil {
+            cachedParentScrollView = findExternalScrollView()
+        }
+
+        if let scrollView = cachedParentScrollView {
+            scrollView.scrollWheel(with: event)
+        } else {
+            // Fallback: pass to next responder
+            self.nextResponder?.scrollWheel(with: event)
+        }
+    }
+
+    private func findExternalScrollView() -> NSScrollView? {
+        // Get the WebView's own enclosing scroll view (if any)
+        let internalScrollView = self.enclosingScrollView
+
+        // Traverse up from our superview looking for an NSScrollView
+        // that is NOT the WebView's internal one
+        var current: NSView? = self.superview
+        while let view = current {
+            if let scrollView = view as? NSScrollView, scrollView !== internalScrollView {
+                return scrollView
+            }
+            current = view.superview
+        }
+        return nil
+    }
+}
+
+/// Unified rendering view that renders entire message content in a single WebView
+/// Provides consistent styling, proper text selection, and beautiful LaTeX rendering
 struct MarkdownView: View {
     let content: String
 
+    @State private var height: CGFloat = 100
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .text(let text):
-                    renderText(text)
-                case .codeBlock(let language, let code):
-                    CodeBlockView(language: language, code: code)
-                case .displayLatex(let latex):
-                    DynamicLaTeXView(latex: latex, displayMode: true)
-                }
-            }
-        }
-    }
-
-    private func renderText(_ text: String) -> some View {
-        // Check if text contains inline LaTeX ($...$)
-        if containsInlineLatex(text) {
-            return AnyView(DynamicMixedContentView(text: text))
-        }
-
-        // Parse markdown for headers and other block elements
-        return AnyView(MarkdownTextView(text: text))
-    }
-
-    private func containsInlineLatex(_ text: String) -> Bool {
-        // Check for $...$ pattern (but not $$)
-        let pattern = #"(?<!\$)\$(?!\$)([^\$]+)\$(?!\$)"#
-        return text.range(of: pattern, options: .regularExpression) != nil
-    }
-
-    private enum Block {
-        case text(String)
-        case codeBlock(language: String?, code: String)
-        case displayLatex(String)
-    }
-
-    private func parseBlocks() -> [Block] {
-        var blocks: [Block] = []
-        var remaining = content
-
-        while !remaining.isEmpty {
-            var firstMatch: (range: Range<String.Index>, type: String, content: Any)? = nil
-
-            // Check for code block: ```language\ncode\n```
-            let codeBlockPattern = #"```(\w*)\n([\s\S]*?)```"#
-            if let match = remaining.range(of: codeBlockPattern, options: .regularExpression) {
-                let codeBlockString = String(remaining[match])
-                if let parsed = parseCodeBlock(codeBlockString) {
-                    if firstMatch == nil || match.lowerBound < firstMatch!.range.lowerBound {
-                        firstMatch = (match, "code", parsed)
-                    }
-                }
-            }
-
-            // Check for display LaTeX: $$...$$ (can span multiple lines)
-            let displayLatexPattern = #"\$\$([\s\S]*?)\$\$"#
-            if let match = remaining.range(of: displayLatexPattern, options: .regularExpression) {
-                if firstMatch == nil || match.lowerBound < firstMatch!.range.lowerBound {
-                    let matchedString = String(remaining[match])
-                    if let latex = extractLatexContent(from: matchedString, pattern: displayLatexPattern) {
-                        firstMatch = (match, "displayLatex", latex)
-                    }
-                }
-            }
-
-            // Check for display LaTeX: \[...\]
-            let displayLatexPattern2 = #"\\\[([\s\S]*?)\\\]"#
-            if let match = remaining.range(of: displayLatexPattern2, options: .regularExpression) {
-                if firstMatch == nil || match.lowerBound < firstMatch!.range.lowerBound {
-                    let matchedString = String(remaining[match])
-                    if let latex = extractLatexContent(from: matchedString, pattern: displayLatexPattern2) {
-                        firstMatch = (match, "displayLatex", latex)
-                    }
-                }
-            }
-
-            if let found = firstMatch {
-                let textBefore = String(remaining[..<found.range.lowerBound])
-                if !textBefore.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    blocks.append(.text(textBefore.trimmingCharacters(in: .newlines)))
-                }
-
-                switch found.type {
-                case "code":
-                    if let parsed = found.content as? (language: String?, code: String) {
-                        blocks.append(.codeBlock(language: parsed.language, code: parsed.code))
-                    }
-                case "displayLatex":
-                    if let latex = found.content as? String {
-                        blocks.append(.displayLatex(latex))
-                    }
-                default:
-                    break
-                }
-
-                remaining = String(remaining[found.range.upperBound...])
-            } else {
-                if !remaining.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    blocks.append(.text(remaining.trimmingCharacters(in: .newlines)))
-                }
-                break
-            }
-        }
-
-        return blocks
-    }
-
-    private func extractLatexContent(from string: String, pattern: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: string, range: NSRange(string.startIndex..., in: string)),
-              let range = Range(match.range(at: 1), in: string) else {
-            return nil
-        }
-        return String(string[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func parseCodeBlock(_ block: String) -> (language: String?, code: String)? {
-        let pattern = #"```(\w*)\n([\s\S]*?)```"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: block, range: NSRange(block.startIndex..., in: block)) else {
-            return nil
-        }
-
-        let languageRange = Range(match.range(at: 1), in: block)
-        let codeRange = Range(match.range(at: 2), in: block)
-
-        let language = languageRange.map { String(block[$0]) }
-        let code = codeRange.map { String(block[$0]) } ?? ""
-
-        return (language: language?.isEmpty == true ? nil : language, code: code.trimmingCharacters(in: .newlines))
+        UnifiedMessageWebView(content: content, height: $height)
+            .frame(minHeight: height)
     }
 }
 
-// MARK: - Markdown Text View (handles headers, bold, italic, etc.)
-struct MarkdownTextView: View {
-    let text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
-                renderLine(line)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func renderLine(_ line: String) -> some View {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-        if trimmed.hasPrefix("### ") {
-            Text(trimmed.dropFirst(4))
-                .font(.headline)
-                .fontWeight(.semibold)
-                .padding(.top, 4)
-        } else if trimmed.hasPrefix("## ") {
-            Text(trimmed.dropFirst(3))
-                .font(.title2)
-                .fontWeight(.bold)
-                .padding(.top, 6)
-        } else if trimmed.hasPrefix("# ") {
-            Text(trimmed.dropFirst(2))
-                .font(.title)
-                .fontWeight(.bold)
-                .padding(.top, 8)
-        } else if !trimmed.isEmpty {
-            if let attributed = try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                Text(attributed)
-                    .textSelection(.enabled)
-            } else {
-                Text(line)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-}
-
-// MARK: - Dynamic LaTeX View (self-sizing)
-struct DynamicLaTeXView: View {
-    let latex: String
-    let displayMode: Bool
-
-    @State private var height: CGFloat = 50
-
-    var body: some View {
-        LaTeXWebView(latex: latex, displayMode: displayMode, height: $height)
-            .frame(height: height)
-    }
-}
-
-struct LaTeXWebView: NSViewRepresentable {
-    let latex: String
-    let displayMode: Bool
+// MARK: - Unified Message WebView
+/// Single WebView that renders markdown, LaTeX, and code blocks with consistent styling
+struct UnifiedMessageWebView: NSViewRepresentable {
+    let content: String
     @Binding var height: CGFloat
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> NonScrollingWebView {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "heightUpdate")
+        configuration.userContentController.add(context.coordinator, name: "copyCode")
 
-        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 600, height: 50), configuration: configuration)
+        let webView = NonScrollingWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
+
+        // Disable internal scrolling completely
+        disableInternalScrolling(for: webView)
 
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    private func disableInternalScrolling(for webView: WKWebView) {
+        // Disable the enclosing scroll view if it exists
+        if let scrollView = webView.enclosingScrollView {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.verticalScrollElasticity = .none
+            scrollView.horizontalScrollElasticity = .none
+        }
+
+        // Find and disable any internal scroll views within the WKWebView
+        disableScrollViewsRecursively(in: webView)
+    }
+
+    private func disableScrollViewsRecursively(in view: NSView) {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView {
+                scrollView.hasVerticalScroller = false
+                scrollView.hasHorizontalScroller = false
+                scrollView.verticalScrollElasticity = .none
+                scrollView.horizontalScrollElasticity = .none
+                scrollView.scrollerStyle = .overlay
+            }
+            disableScrollViewsRecursively(in: subview)
+        }
+    }
+
+    func updateNSView(_ webView: NonScrollingWebView, context: Context) {
         webView.loadHTMLString(generateHTML(), baseURL: nil)
     }
 
@@ -234,314 +121,506 @@ struct LaTeXWebView: NSViewRepresentable {
                 DispatchQueue.main.async {
                     self.height = h + 16
                 }
+            } else if message.name == "copyCode", let code = message.body as? String {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(code, forType: .string)
             }
         }
 
         private func updateHeight(_ webView: WKWebView) {
-            webView.evaluateJavaScript("document.body.scrollHeight") { result, _ in
-                if let h = result as? CGFloat, h > 0 {
-                    DispatchQueue.main.async {
-                        self.height = h + 16
-                    }
-                }
-            }
-        }
-    }
-
-    private func generateHTML() -> String {
-        let escapedLatex = latex
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\n", with: " ")
-
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-            <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                html, body {
-                    background: transparent;
-                    overflow-x: auto;
-                    overflow-y: hidden;
-                }
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                    display: flex;
-                    justify-content: \(displayMode ? "center" : "flex-start");
-                    align-items: center;
-                    padding: 8px;
-                }
-                #latex { color: inherit; }
-                @media (prefers-color-scheme: dark) { #latex { color: #fff; } }
-                @media (prefers-color-scheme: light) { #latex { color: #000; } }
-            </style>
-        </head>
-        <body>
-            <div id="latex"></div>
-            <script>
-                try {
-                    katex.render('\(escapedLatex)', document.getElementById('latex'), {
-                        throwOnError: false,
-                        displayMode: \(displayMode ? "true" : "false"),
-                        trust: true
-                    });
-                } catch (e) {
-                    document.getElementById('latex').textContent = 'Error: ' + e.message;
-                }
-                setTimeout(function() {
-                    window.webkit.messageHandlers.heightUpdate.postMessage(document.body.scrollHeight);
-                }, 100);
-            </script>
-        </body>
-        </html>
-        """
-    }
-}
-
-// MARK: - Dynamic Mixed Content View (text + inline LaTeX)
-struct DynamicMixedContentView: View {
-    let text: String
-
-    @State private var height: CGFloat = 30
-
-    var body: some View {
-        MixedContentWebView(text: text, height: $height)
-            .frame(minHeight: height)
-    }
-}
-
-struct MixedContentWebView: NSViewRepresentable {
-    let text: String
-    @Binding var height: CGFloat
-
-    func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(context.coordinator, name: "heightUpdate")
-
-        let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 600, height: 30), configuration: configuration)
-        webView.navigationDelegate = context.coordinator
-        webView.setValue(false, forKey: "drawsBackground")
-
-        return webView
-    }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        webView.loadHTMLString(generateHTML(), baseURL: nil)
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(height: $height)
-    }
-
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        @Binding var height: CGFloat
-
-        init(height: Binding<CGFloat>) {
-            _height = height
-        }
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            updateHeight(webView)
-        }
-
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "heightUpdate", let h = message.body as? CGFloat, h > 0 {
+            webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] result, _ in
+                guard let self = self, let h = result as? CGFloat, h > 0 else { return }
                 DispatchQueue.main.async {
-                    self.height = h + 8
-                }
-            }
-        }
-
-        private func updateHeight(_ webView: WKWebView) {
-            webView.evaluateJavaScript("document.body.scrollHeight") { result, _ in
-                if let h = result as? CGFloat, h > 0 {
-                    DispatchQueue.main.async {
-                        self.height = h + 8
-                    }
+                    self.height = h + 16
                 }
             }
         }
     }
 
     private func generateHTML() -> String {
-        // Process each line for markdown headers and other elements
-        let lines = text.components(separatedBy: "\n")
-        var htmlLines: [String] = []
-
-        for line in lines {
-            var processedLine = line
-                .replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-
-            let trimmed = processedLine.trimmingCharacters(in: .whitespaces)
-
-            // Check for markdown headers
-            if trimmed.hasPrefix("### ") {
-                let content = String(trimmed.dropFirst(4))
-                htmlLines.append("<h3>\(content)</h3>")
-            } else if trimmed.hasPrefix("## ") {
-                let content = String(trimmed.dropFirst(3))
-                htmlLines.append("<h2>\(content)</h2>")
-            } else if trimmed.hasPrefix("# ") {
-                let content = String(trimmed.dropFirst(2))
-                htmlLines.append("<h1>\(content)</h1>")
-            } else {
-                // Convert markdown bold **text** to <strong>
-                processedLine = processedLine.replacingOccurrences(of: #"\*\*(.+?)\*\*"#, with: "<strong>$1</strong>", options: .regularExpression)
-                // Convert markdown italic *text* to <em> (but not **)
-                processedLine = processedLine.replacingOccurrences(of: #"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"#, with: "<em>$1</em>", options: .regularExpression)
-                htmlLines.append(processedLine)
-            }
-        }
-
-        let html = htmlLines.joined(separator: "<br>")
+        let processedContent = preprocessContent(content)
 
         return """
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
             <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
             <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+
                 html, body {
                     background: transparent;
-                    overflow-x: auto;
+                    overflow-x: hidden;
                     overflow-y: hidden;
-                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     font-size: 15px;
-                    line-height: 1.6;
+                    line-height: 1.65;
+                    -webkit-font-smoothing: antialiased;
+                    pointer-events: auto;
                 }
+
+                /* Allow text selection but prevent scroll capture */
+                * {
+                    -webkit-user-select: text;
+                    user-select: text;
+                }
+
+                body {
+                    padding: 8px 0;
+                }
+
                 #content {
                     color: inherit;
                     word-wrap: break-word;
+                    overflow-wrap: break-word;
                 }
-                h1 { font-size: 1.8em; font-weight: bold; margin-top: 12px; margin-bottom: 8px; }
-                h2 { font-size: 1.5em; font-weight: bold; margin-top: 10px; margin-bottom: 6px; }
-                h3 { font-size: 1.2em; font-weight: 600; margin-top: 8px; margin-bottom: 4px; }
-                .katex { font-size: 1.05em; }
-                @media (prefers-color-scheme: dark) { body { color: #fff; } }
-                @media (prefers-color-scheme: light) { body { color: #000; } }
+
+                /* Typography */
+                h1, h2, h3, h4, h5, h6 {
+                    margin-top: 1.2em;
+                    margin-bottom: 0.6em;
+                    font-weight: 600;
+                    line-height: 1.3;
+                }
+
+                h1 { font-size: 1.8em; }
+                h2 { font-size: 1.5em; }
+                h3 { font-size: 1.25em; }
+
+                h1:first-child, h2:first-child, h3:first-child {
+                    margin-top: 0;
+                }
+
+                p {
+                    margin: 0.8em 0;
+                }
+
+                p:first-child {
+                    margin-top: 0;
+                }
+
+                p:last-child {
+                    margin-bottom: 0;
+                }
+
+                /* Inline formatting */
+                strong { font-weight: 600; }
+                em { font-style: italic; }
+                code {
+                    font-family: 'SF Mono', Monaco, 'Cascadia Code', Menlo, monospace;
+                    font-size: 0.9em;
+                    padding: 0.2em 0.4em;
+                    background: rgba(128, 128, 128, 0.15);
+                    border-radius: 3px;
+                }
+
+                /* Lists */
+                ul, ol {
+                    margin: 0.8em 0;
+                    padding-left: 2em;
+                }
+
+                li {
+                    margin: 0.3em 0;
+                }
+
+                /* Horizontal rule */
+                hr {
+                    margin: 1.5em 0;
+                    border: none;
+                    border-top: 1px solid rgba(128, 128, 128, 0.3);
+                }
+
+                /* Code blocks */
+                .code-block {
+                    margin: 1em 0;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    background: rgba(128, 128, 128, 0.1);
+                    border: 1px solid rgba(128, 128, 128, 0.2);
+                }
+
+                .code-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 12px;
+                    background: rgba(128, 128, 128, 0.08);
+                    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+                }
+
+                .code-language {
+                    font-size: 0.8em;
+                    opacity: 0.7;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .copy-button {
+                    background: none;
+                    border: none;
+                    color: inherit;
+                    cursor: pointer;
+                    font-size: 0.8em;
+                    opacity: 0.7;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+
+                .copy-button:hover {
+                    opacity: 1;
+                    background: rgba(128, 128, 128, 0.15);
+                }
+
+                .code-content {
+                    padding: 12px;
+                    overflow-x: auto;
+                }
+
+                .code-content pre {
+                    margin: 0;
+                    font-family: 'SF Mono', Monaco, 'Cascadia Code', Menlo, monospace;
+                    font-size: 0.9em;
+                    line-height: 1.5;
+                    white-space: pre;
+                }
+
+                /* LaTeX */
+                .katex {
+                    font-size: 1.05em;
+                }
+
+                .katex-display {
+                    margin: 1.2em 0;
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                }
+
+                /* Color scheme */
+                @media (prefers-color-scheme: dark) {
+                    body {
+                        color: #e8e8e8;
+                    }
+                    .code-block {
+                        background: rgba(255, 255, 255, 0.05);
+                        border-color: rgba(255, 255, 255, 0.1);
+                    }
+                }
+
+                @media (prefers-color-scheme: light) {
+                    body {
+                        color: #1a1a1a;
+                    }
+                }
             </style>
         </head>
         <body>
-            <div id="content">\(html)</div>
+            <div id="content">\(processedContent)</div>
             <script>
+                // Render LaTeX
                 renderMathInElement(document.getElementById('content'), {
                     delimiters: [
                         {left: '$$', right: '$$', display: true},
-                        {left: '$', right: '$', display: false}
+                        {left: '$', right: '$', display: false},
+                        {left: '\\\\[', right: '\\\\]', display: true},
+                        {left: '\\\\(', right: '\\\\)', display: false}
                     ],
                     throwOnError: false,
                     trust: true
                 });
-                setTimeout(function() {
+
+                // Code copy functionality
+                document.querySelectorAll('.copy-button').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const code = this.dataset.code;
+                        window.webkit.messageHandlers.copyCode.postMessage(code);
+
+                        const originalText = this.textContent;
+                        this.textContent = 'Copied!';
+                        setTimeout(() => {
+                            this.textContent = originalText;
+                        }, 2000);
+                    });
+                });
+
+                // Update height
+                function updateHeight() {
                     window.webkit.messageHandlers.heightUpdate.postMessage(document.body.scrollHeight);
-                }, 150);
+                }
+
+                // Update on load and after LaTeX rendering
+                updateHeight();
+                setTimeout(updateHeight, 100);
+                setTimeout(updateHeight, 300);
             </script>
         </body>
         </html>
         """
     }
-}
 
-// MARK: - Code Block View
-struct CodeBlockView: View {
-    let language: String?
-    let code: String
+    private func preprocessContent(_ text: String) -> String {
+        var html = ""
+        var remaining = text
 
-    @State private var isCopied = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                if let lang = language {
-                    Text(lang)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        while !remaining.isEmpty {
+            // Check for code blocks first: ```language\ncode\n```
+            let codePattern = #"```(\w*)\n([\s\S]*?)```"#
+            if let codeMatch = remaining.range(of: codePattern, options: .regularExpression) {
+                // Add text before code block
+                let textBefore = String(remaining[..<codeMatch.lowerBound])
+                if !textBefore.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    html += convertMarkdownToHTML(textBefore)
                 }
-                Spacer()
-                Button {
-                    copyToClipboard()
-                } label: {
-                    Label(isCopied ? "Copied!" : "Copy", systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                        .font(.caption)
+
+                // Parse code block
+                if let codeBlock = parseCodeBlock(String(remaining[codeMatch])) {
+                    html += renderCodeBlock(language: codeBlock.language, code: codeBlock.code)
                 }
-                .buttonStyle(.borderless)
+
+                remaining = String(remaining[codeMatch.upperBound...])
+                continue
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(nsColor: .windowBackgroundColor))
 
-            Text(code)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // No more code blocks, process remaining text
+            html += convertMarkdownToHTML(remaining)
+            break
         }
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-        )
+
+        return html
     }
 
-    private func copyToClipboard() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(code, forType: .string)
-
-        withAnimation { isCopied = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation { isCopied = false }
+    private func parseCodeBlock(_ block: String) -> (language: String?, code: String)? {
+        let pattern = #"```(\w*)\n([\s\S]*?)```"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: block, range: NSRange(block.startIndex..., in: block)) else {
+            return nil
         }
+
+        let languageRange = Range(match.range(at: 1), in: block)
+        let codeRange = Range(match.range(at: 2), in: block)
+
+        let language = languageRange.map { String(block[$0]) }
+        let code = codeRange.map { String(block[$0]) } ?? ""
+
+        return (language: language?.isEmpty == true ? nil : language, code: code)
+    }
+
+    private func renderCodeBlock(language: String?, code: String) -> String {
+        let escapedCode = code
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+
+        let languageLabel = language ?? ""
+
+        return """
+        <div class="code-block">
+            <div class="code-header">
+                <span class="code-language">\(languageLabel)</span>
+                <button class="copy-button" data-code="\(escapedCode.replacingOccurrences(of: "\n", with: "&#10;"))">Copy</button>
+            </div>
+            <div class="code-content">
+                <pre>\(escapedCode)</pre>
+            </div>
+        </div>
+        """
+    }
+
+    private func convertMarkdownToHTML(_ text: String) -> String {
+        let lines = text.components(separatedBy: "\n")
+        var htmlLines: [String] = []
+        var inParagraph = false
+        var currentParagraph: [String] = []
+        var inUnorderedList = false
+        var inOrderedList = false
+        var listItems: [String] = []
+
+        func closeParagraph() {
+            if inParagraph {
+                htmlLines.append("<p>" + currentParagraph.joined(separator: " ") + "</p>")
+                currentParagraph = []
+                inParagraph = false
+            }
+        }
+
+        func closeList() {
+            if inUnorderedList {
+                htmlLines.append("<ul>")
+                htmlLines.append(contentsOf: listItems)
+                htmlLines.append("</ul>")
+                listItems = []
+                inUnorderedList = false
+            } else if inOrderedList {
+                htmlLines.append("<ol>")
+                htmlLines.append(contentsOf: listItems)
+                htmlLines.append("</ol>")
+                listItems = []
+                inOrderedList = false
+            }
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Headers
+            if trimmed.hasPrefix("### ") {
+                closeParagraph()
+                closeList()
+                let content = escapeHTML(String(trimmed.dropFirst(4)))
+                htmlLines.append("<h3>\(processInlineFormatting(content))</h3>")
+            } else if trimmed.hasPrefix("## ") {
+                closeParagraph()
+                closeList()
+                let content = escapeHTML(String(trimmed.dropFirst(3)))
+                htmlLines.append("<h2>\(processInlineFormatting(content))</h2>")
+            } else if trimmed.hasPrefix("# ") {
+                closeParagraph()
+                closeList()
+                let content = escapeHTML(String(trimmed.dropFirst(2)))
+                htmlLines.append("<h1>\(processInlineFormatting(content))</h1>")
+            } else if isHorizontalRule(trimmed) {
+                // Horizontal rule: ---, ***, or ___
+                closeParagraph()
+                closeList()
+                htmlLines.append("<hr>")
+            } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
+                // Unordered list item
+                closeParagraph()
+                if inOrderedList {
+                    closeList()
+                }
+                inUnorderedList = true
+                let content = escapeHTML(String(trimmed.dropFirst(2)))
+                listItems.append("<li>\(processInlineFormatting(content))</li>")
+            } else if let match = trimmed.range(of: #"^\d+\.\s+"#, options: .regularExpression) {
+                // Ordered list item
+                closeParagraph()
+                if inUnorderedList {
+                    closeList()
+                }
+                inOrderedList = true
+                let content = escapeHTML(String(trimmed[match.upperBound...]))
+                listItems.append("<li>\(processInlineFormatting(content))</li>")
+            } else if trimmed.isEmpty {
+                // Empty line ends paragraph or list
+                closeParagraph()
+                closeList()
+            } else {
+                // Regular text - accumulate into paragraph
+                closeList()
+                currentParagraph.append(escapeHTML(line))
+                inParagraph = true
+            }
+        }
+
+        // Close final paragraph or list if needed
+        closeParagraph()
+        closeList()
+
+        return htmlLines.map { processInlineFormatting($0) }.joined(separator: "\n")
+    }
+
+    private func isHorizontalRule(_ line: String) -> Bool {
+        // Horizontal rule: ---, ***, or ___ (3 or more)
+        let patterns = [
+            "^-{3,}$",     // ---
+            "^\\*{3,}$",   // ***
+            "^_{3,}$"      // ___
+        ]
+
+        for pattern in patterns {
+            if line.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func escapeHTML(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+    }
+
+    private func processInlineFormatting(_ text: String) -> String {
+        var result = text
+
+        // Bold: **text**
+        result = result.replacingOccurrences(
+            of: #"\*\*(.+?)\*\*"#,
+            with: "<strong>$1</strong>",
+            options: .regularExpression
+        )
+
+        // Italic: *text* (but not **)
+        result = result.replacingOccurrences(
+            of: #"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"#,
+            with: "<em>$1</em>",
+            options: .regularExpression
+        )
+
+        // Inline code: `code`
+        result = result.replacingOccurrences(
+            of: #"`([^`]+)`"#,
+            with: "<code>$1</code>",
+            options: .regularExpression
+        )
+
+        return result
     }
 }
 
 #Preview {
     ScrollView {
         MarkdownView(content: """
-        abracadabra!
-        
-        # Header 1
+        In special relativity, the energy–momentum relation (also called the "mass-shell" relation) is
 
-        ## Header 2
+        $$E^2 = (pc)^2 + (mc^2)^2$$
 
-        ### Header 3
+        where:
 
-        This is **bold** and *italic* text.
+        - $E$ is the total (relativistic) energy,
+        - $p$ is the magnitude of the relativistic momentum,
+        - $m$ is the invariant (rest) mass,
+        - $c$ is the speed of light.
 
-        Here's an inline equation: We set $a=1$ from now on. And $E = mc^2$ is famous.
+        Common special cases:
 
-        ### Working modulo $p$
+        - **Particle at rest** ($p = 0$):
 
-        When working in a field $\\mathbb{F}_p$, we have $a^p = a$ for all $a$.
+        $$E = mc^2$$
 
-        ## The Quadratic Formula $x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$
+        - **Massless particle** ($m = 0$, e.g., a photon):
 
-        Display math:
+        $$E = pc$$
 
-        $$
-        \\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}
-        $$
+        Equivalently, it can be written as an invariant:
+
+        $$E^2 - (pc)^2 = (mc^2)^2$$
+
+        This is **bold** and *italic* text with inline math like $\\alpha = \\beta + 1$.
 
         ```python
-        def factorial(n):
-            if n <= 1:
-                return 1
-            return n * factorial(n - 1)
+        def hello_world():
+            print("Hello, World!")
+            return 42
         ```
 
-        That's all!
+        And here's some more text after the code block.
         """)
         .padding()
     }
-    .frame(width: 600, height: 800)
+    .frame(width: 700, height: 800)
 }

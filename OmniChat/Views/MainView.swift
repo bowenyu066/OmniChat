@@ -41,6 +41,9 @@ struct MainView: View {
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 900, minHeight: 600)
         .onAppear {
+            // Create default memories if needed (first launch)
+            DefaultMemoryService.shared.createDefaultMemoriesIfNeeded(modelContext: modelContext)
+
             // Auto-select first conversation if available
             if selectedConversation == nil && !conversations.isEmpty {
                 selectedConversation = conversations.first
@@ -74,6 +77,10 @@ struct MainView: View {
 
     private func createNewConversation() {
         let conversation = Conversation()
+
+        // Apply default memory configuration
+        conversation.memoryContextConfig = DefaultMemoryService.createDefaultMemoryConfig(modelContext: modelContext)
+
         modelContext.insert(conversation)
         selectedConversation = conversation
     }
