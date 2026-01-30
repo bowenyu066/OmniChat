@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniChat - All Your AI, One Home</title>
+    <meta name="description" content="A native macOS app that unifies ChatGPT, Claude, and Gemini. Your conversations and memories stay local.">
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/bowenyu066/OmniChat/main/OmniChat/Resources/Assets.xcassets/AppIcon.appiconset/icon-128.png">
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #141416;
+            --bg-card: #1c1c1f;
+            --text-primary: #f5f5f7;
+            --text-secondary: #a1a1a6;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --border: #2a2a2e;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header */
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--text-primary);
+        }
+
+        .logo img {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+        }
+
+        .logo span {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        /* Hero */
+        .hero {
+            padding: 80px 0 60px;
+            text-align: center;
+        }
+
+        .hero-poetry {
+            max-width: 700px;
+            margin: 0 auto 48px;
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            line-height: 1.9;
+        }
+
+        .hero-poetry p {
+            margin-bottom: 8px;
+        }
+
+        .hero-poetry strong {
+            color: var(--text-primary);
+        }
+
+        .hero-poetry em {
+            color: var(--accent);
+            font-style: normal;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-tagline {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+            border-color: var(--text-secondary);
+        }
+
+        .btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Features */
+        .features {
+            padding: 80px 0;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 48px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--accent);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            font-size: 1.5rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.15rem;
+            margin-bottom: 8px;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* Models */
+        .models {
+            padding: 60px 0;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .models-list {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 32px;
+            margin-top: 32px;
+        }
+
+        .model-group {
+            text-align: center;
+        }
+
+        .model-group h4 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .model-group ul {
+            list-style: none;
+        }
+
+        .model-group li {
+            color: var(--text-primary);
+            padding: 4px 0;
+        }
+
+        /* Requirements */
+        .requirements {
+            padding: 60px 0;
+            text-align: center;
+        }
+
+        .requirements-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            display: inline-block;
+        }
+
+        .requirements-box p {
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .requirements-box strong {
+            color: var(--text-primary);
+        }
+
+        /* Footer */
+        footer {
+            padding: 40px 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        footer p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .hero-poetry {
+                font-size: 1rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">
+                    <img src="https://raw.githubusercontent.com/bowenyu066/OmniChat/main/OmniChat/Resources/Assets.xcassets/AppIcon.appiconset/icon-128.png" alt="OmniChat">
+                    <span>OmniChat</span>
+                </a>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="https://github.com/bowenyu066/OmniChat">GitHub</a>
+                    <a href="https://github.com/bowenyu066/OmniChat/releases">Download</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="hero-poetry">
+                    <p>I know you are tired and sick of having to switch among ChatGPT, Gemini, and whatever apps,</p>
+                    <p>just to find the best AI that fits your personality.</p>
+                    <p>I also know that you feel like sometimes you are slowly "kidnapped" by one of them,</p>
+                    <p>because they carry all your emotions, your memories, your histories, and your late-night teas.</p>
+                    <p>One day you may find out you do not love them anymore.</p>
+                    <p>I know you want to leave, you want to take on a break, you want to find something new.</p>
+                    <p>But I completely understand that this is hard.</p>
+                    <p>It is just too hard to discard old memories and be forced to start off blank.</p>
+                    <p>That's why we bring you <strong>OmniChat</strong>.</p>
+                    <p>Models are just guests, but <em>you are the real landlord</em>.</p>
+                </div>
+
+                <h1>OmniChat</h1>
+                <p class="hero-tagline">All your AI, one home. Your data stays with you.</p>
+
+                <div class="hero-buttons">
+                    <a href="https://github.com/bowenyu066/OmniChat/releases/latest" class="btn btn-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download for macOS
+                    </a>
+                    <a href="https://github.com/bowenyu066/OmniChat" class="btn btn-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                        View on GitHub
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="features" id="features">
+            <div class="container">
+                <h2 class="section-title">Why OmniChat?</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔄</div>
+                        <h3>Multi-Provider</h3>
+                        <p>GPT-5.2, Claude Opus 4.5, Gemini 3 Pro—switch between them seamlessly in one app.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🧠</div>
+                        <h3>Memory System</h3>
+                        <p>Your knowledge persists across conversations. No more repeating yourself to AI.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📎</div>
+                        <h3>Multimodal</h3>
+                        <p>Drag-drop images and PDFs into any chat. All providers support attachments.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">💾</div>
+                        <h3>Local Storage</h3>
+                        <p>All conversations stored on your Mac. Your data never leaves your device.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📁</div>
+                        <h3>Workspaces</h3>
+                        <p>Index your codebases for context-aware coding assistance.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔐</div>
+                        <h3>Secure</h3>
+                        <p>Touch ID protection. API keys in Keychain. App Sandbox enabled.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="models">
+            <div class="container">
+                <h2 class="section-title">Supported Models</h2>
+                <div class="models-list">
+                    <div class="model-group">
+                        <h4>OpenAI</h4>
+                        <ul>
+                            <li>GPT-5.2</li>
+                            <li>GPT-5 Mini</li>
+                            <li>GPT-4o</li>
+                        </ul>
+                    </div>
+                    <div class="model-group">
+                        <h4>Anthropic</h4>
+                        <ul>
+                            <li>Claude Opus 4.5</li>
+                            <li>Claude Sonnet 4.5</li>
+                            <li>Claude Haiku 4.5</li>
+                        </ul>
+                    </div>
+                    <div class="model-group">
+                        <h4>Google</h4>
+                        <ul>
+                            <li>Gemini 3 Pro</li>
+                            <li>Gemini 3 Flash</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="requirements">
+            <div class="container">
+                <h2 class="section-title">Requirements</h2>
+                <div class="requirements-box">
+                    <p><strong>macOS 14.0</strong> or later</p>
+                    <p>Bring your own API keys from <a href="https://platform.openai.com/api-keys">OpenAI</a>, <a href="https://console.anthropic.com/">Anthropic</a>, or <a href="https://aistudio.google.com/">Google AI</a></p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Made with care. <a href="https://github.com/bowenyu066/OmniChat">Open source</a> under MIT License.</p>
+        </div>
+    </footer>
+</body>
+</html>
