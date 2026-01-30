@@ -92,7 +92,13 @@ struct MessageView: View {
             }
         }
         .sheet(isPresented: $showingSaveToMemory) {
-            MemoryEditorView(memory: createMemoryFromMessage())
+            let firstLine = message.content.components(separatedBy: .newlines).first ?? "Memory"
+            let title = firstLine.prefix(50).trimmingCharacters(in: .whitespaces)
+            MemoryEditorView(
+                initialTitle: String(title),
+                initialBody: message.content,
+                sourceMessageId: message.id
+            )
         }
         .popover(isPresented: $showModelPicker) {
             ModelPickerPopover(onSelect: { model in
@@ -118,21 +124,6 @@ struct MessageView: View {
                 isSpeaking = false
             }
         }
-    }
-
-    private func createMemoryFromMessage() -> MemoryItem {
-        let firstLine = message.content.components(separatedBy: .newlines).first ?? "Memory"
-        let title = firstLine.prefix(50).trimmingCharacters(in: .whitespaces)
-
-        let memory = MemoryItem(
-            title: String(title),
-            body: message.content,
-            type: .reference,
-            sourceMessageId: message.id
-        )
-
-        modelContext.insert(memory)
-        return memory
     }
 
     private var userMessageBackground: some ShapeStyle {

@@ -7,6 +7,7 @@ struct MemoryEditorView: View {
     @Query private var workspaces: [Workspace]
 
     let memory: MemoryItem?
+    let sourceMessageId: UUID?
 
     @State private var title: String
     @State private var bodyText: String
@@ -19,6 +20,7 @@ struct MemoryEditorView: View {
 
     init(memory: MemoryItem?) {
         self.memory = memory
+        self.sourceMessageId = memory?.sourceMessageId
 
         // Initialize state from memory or defaults
         _title = State(initialValue: memory?.title ?? "")
@@ -29,6 +31,21 @@ struct MemoryEditorView: View {
         _selectedWorkspace = State(initialValue: memory?.workspace)
         _isDefaultSelected = State(initialValue: memory?.isDefaultSelected ?? false)
         _isPinned = State(initialValue: memory?.isPinned ?? false)
+    }
+
+    init(initialTitle: String, initialBody: String, sourceMessageId: UUID) {
+        self.memory = nil
+        self.sourceMessageId = sourceMessageId
+
+        // Initialize with provided values
+        _title = State(initialValue: initialTitle)
+        _bodyText = State(initialValue: initialBody)
+        _selectedType = State(initialValue: .reference)
+        _tagsString = State(initialValue: "")
+        _scope = State(initialValue: .global)
+        _selectedWorkspace = State(initialValue: nil)
+        _isDefaultSelected = State(initialValue: false)
+        _isPinned = State(initialValue: false)
     }
 
     var isValid: Bool {
@@ -160,7 +177,8 @@ struct MemoryEditorView: View {
                 title: trimmedTitle,
                 body: trimmedBody,
                 type: selectedType,
-                scope: scope
+                scope: scope,
+                sourceMessageId: sourceMessageId
             )
             newMemory.setTags(from: tagsString)
             newMemory.isDefaultSelected = isDefaultSelected
