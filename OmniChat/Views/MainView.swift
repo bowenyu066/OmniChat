@@ -32,6 +32,7 @@ struct MainView: View {
                             selectedConversation = newConversation
                         }
                     )
+                    .id(conversation.id)  // Force view recreation when conversation changes
                 } else {
                     WelcomeView(onNewChat: createNewConversation)
                 }

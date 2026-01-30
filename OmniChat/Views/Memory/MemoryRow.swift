@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MemoryRow: View {
     let memory: MemoryItem
+    var isEditMode: Bool = false
     let onEdit: () -> Void
 
     var body: some View {
@@ -23,12 +24,14 @@ struct MemoryRow: View {
                         .font(.caption)
                 }
 
-                Button(action: onEdit) {
-                    Text("Edit")
-                        .font(.caption)
-                        .foregroundColor(.blue)
+                if !isEditMode {
+                    Button(action: onEdit) {
+                        Text("Edit")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             Text(memory.bodyPreview)

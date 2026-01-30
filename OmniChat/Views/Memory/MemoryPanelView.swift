@@ -13,6 +13,10 @@ struct MemoryPanelView: View {
     @State private var showingEditor = false
     @State private var editingMemory: MemoryItem?
 
+    // Bulk delete state
+    @State private var isEditMode = false
+    @State private var selectedMemoryIDs: Set<UUID> = []
+
     var filteredMemories: [MemoryItem] {
         allMemories.filter { memory in
             // Search filter
@@ -40,6 +44,14 @@ struct MemoryPanelView: View {
 
             return matchesSearch && matchesType && matchesPinned && matchesScope
         }
+        .sorted { memory1, memory2 in
+            // First, prioritize pinned items
+            if memory1.isPinned != memory2.isPinned {
+                return memory1.isPinned
+            }
+            // Then sort by updatedAt (most recent first)
+            return memory1.updatedAt > memory2.updatedAt
+        }
     }
 
     var body: some View {
@@ -52,10 +64,30 @@ struct MemoryPanelView: View {
 
                 Spacer()
 
-                Button(action: createNewMemory) {
-                    Label("New Memory", systemImage: "plus.circle.fill")
+                if isEditMode {
+                    Button(action: deleteSelected) {
+                        Label("Delete Selected", systemImage: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(selectedMemoryIDs.isEmpty)
+
+                    Button("Done") {
+                        isEditMode = false
+                        selectedMemoryIDs.removeAll()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Edit") {
+                        isEditMode = true
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(filteredMemories.isEmpty)
+
+                    Button(action: createNewMemory) {
+                        Label("New Memory", systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.borderless)
             }
             .padding()
 
@@ -72,6 +104,36 @@ struct MemoryPanelView: View {
 
             Divider()
 
+            // Select All checkbox (only in edit mode)
+            if isEditMode && !filteredMemories.isEmpty {
+                HStack {
+                    Toggle(isOn: Binding(
+                        get: { selectedMemoryIDs.count == filteredMemories.count },
+                        set: { newValue in
+                            if newValue {
+                                selectedMemoryIDs = Set(filteredMemories.map { $0.id })
+                            } else {
+                                selectedMemoryIDs.removeAll()
+                            }
+                        }
+                    )) {
+                        Text("Select All")
+                            .font(.subheadline)
+                    }
+                    .toggleStyle(.checkbox)
+
+                    Spacer()
+
+                    Text("\(selectedMemoryIDs.count) selected")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                Divider()
+            }
+
             // Memory list
             if filteredMemories.isEmpty {
                 EmptyMemoryView(hasMemories: !allMemories.isEmpty, onCreate: createNewMemory)
@@ -79,25 +141,60 @@ struct MemoryPanelView: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredMemories) { memory in
-                            MemoryRow(memory: memory) {
-                                editMemory(memory)
+                            HStack(spacing: 8) {
+                                if isEditMode {
+                                    Toggle(isOn: Binding(
+                                        get: { selectedMemoryIDs.contains(memory.id) },
+                                        set: { newValue in
+                                            if newValue {
+                                                selectedMemoryIDs.insert(memory.id)
+                                            } else {
+                                                selectedMemoryIDs.remove(memory.id)
+                                            }
+                                        }
+                                    )) {
+                                        EmptyView()
+                                    }
+                                    .toggleStyle(.checkbox)
+                                }
+
+                                MemoryRow(memory: memory, isEditMode: isEditMode) {
+                                    editMemory(memory)
+                                }
+
+                                if !isEditMode {
+                                    // Context menu only shown when not in edit mode
+                                    EmptyView()
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if isEditMode {
+                                    if selectedMemoryIDs.contains(memory.id) {
+                                        selectedMemoryIDs.remove(memory.id)
+                                    } else {
+                                        selectedMemoryIDs.insert(memory.id)
+                                    }
+                                }
                             }
                             .contextMenu {
-                                Button(action: { editMemory(memory) }) {
-                                    Label("Edit", systemImage: "pencil")
-                                }
+                                if !isEditMode {
+                                    Button(action: { editMemory(memory) }) {
+                                        Label("Edit", systemImage: "pencil")
+                                    }
 
-                                Button(action: { togglePin(memory) }) {
-                                    Label(
-                                        memory.isPinned ? "Unpin" : "Pin",
-                                        systemImage: memory.isPinned ? "pin.slash" : "pin"
-                                    )
-                                }
+                                    Button(action: { togglePin(memory) }) {
+                                        Label(
+                                            memory.isPinned ? "Unpin" : "Pin",
+                                            systemImage: memory.isPinned ? "pin.slash" : "pin"
+                                        )
+                                    }
 
-                                Divider()
+                                    Divider()
 
-                                Button(action: { deleteMemory(memory) }) {
-                                    Label("Delete", systemImage: "trash")
+                                    Button(action: { deleteMemory(memory) }) {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -130,6 +227,17 @@ struct MemoryPanelView: View {
     private func deleteMemory(_ memory: MemoryItem) {
         memory.isDeleted = true
         memory.updatedAt = Date()
+    }
+
+    private func deleteSelected() {
+        for id in selectedMemoryIDs {
+            if let memory = allMemories.first(where: { $0.id == id }) {
+                memory.isDeleted = true
+                memory.updatedAt = Date()
+            }
+        }
+        selectedMemoryIDs.removeAll()
+        isEditMode = false
     }
 }
 

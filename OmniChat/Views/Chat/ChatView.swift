@@ -313,6 +313,9 @@ struct ChatView: View {
 
         let newConversation = Conversation(title: "\(conversation.title) (branch)")
 
+        // Insert conversation first
+        modelContext.insert(newConversation)
+
         // Copy messages up to this point
         for i in 0...messageIndex {
             let originalMessage = sortedMessages[i]
@@ -322,6 +325,13 @@ struct ChatView: View {
                 timestamp: originalMessage.timestamp,
                 modelUsed: originalMessage.modelUsed
             )
+
+            // Insert message first
+            modelContext.insert(copiedMessage)
+
+            // Explicitly set the conversation relationship
+            copiedMessage.conversation = newConversation
+
             // Copy attachments if any
             for attachment in originalMessage.attachments {
                 let copiedAttachment = Attachment(
@@ -330,12 +340,12 @@ struct ChatView: View {
                     data: attachment.data,
                     filename: attachment.filename
                 )
+                modelContext.insert(copiedAttachment)
                 copiedMessage.attachments.append(copiedAttachment)
             }
+
             newConversation.messages.append(copiedMessage)
         }
-
-        modelContext.insert(newConversation)
 
         // Notify parent to select the new conversation
         onBranchConversation?(newConversation)
@@ -348,9 +358,23 @@ struct ChatView: View {
         let hasAttachments = !pendingAttachments.isEmpty
         guard hasText || hasAttachments else { return }
 
-        // Convert pending attachments to Attachment models and build the user message
-        let attachments = pendingAttachments.map { $0.toAttachment() }
-        let userMessage = Message(role: .user, content: inputText, attachments: attachments)
+        // Create user message first (without attachments)
+        let userMessage = Message(role: .user, content: inputText)
+
+        // Insert message into context first so it becomes a managed object
+        modelContext.insert(userMessage)
+
+        // Explicitly set the conversation relationship
+        userMessage.conversation = conversation
+
+        // Then create and add attachments
+        for pendingAttachment in pendingAttachments {
+            let attachment = pendingAttachment.toAttachment()
+            modelContext.insert(attachment)
+            userMessage.attachments.append(attachment)
+        }
+
+        // Now append to conversation
         conversation.messages.append(userMessage)
         conversation.updatedAt = Date()
 
@@ -385,6 +409,13 @@ struct ChatView: View {
             content: "",
             modelUsed: selectedModel.rawValue
         )
+
+        // Insert into context first
+        modelContext.insert(assistantMessage)
+
+        // Explicitly set the conversation relationship
+        assistantMessage.conversation = conversation
+
         conversation.messages.append(assistantMessage)
         currentStreamingMessage = assistantMessage
 

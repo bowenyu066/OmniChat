@@ -15,30 +15,116 @@ struct WorkspacePanelView: View {
     @State private var deleteTargetName: String = ""
     @State private var deleteTargetIsIndexing: Bool = false
 
+    // Bulk delete state
+    @State private var isEditMode = false
+    @State private var selectedWorkspaceIDs: Set<UUID> = []
+
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedWorkspaceID) {
-                ForEach(workspaces) { workspace in
-                    WorkspaceRowContent(
-                        id: workspace.id,
-                        name: workspace.name,
-                        indexStatus: workspace.indexStatus,
-                        lastIndexedAt: workspace.lastIndexedAt,
-                        onRequestDelete: { id, name, isIndexing in
-                            deleteTargetID = id
-                            deleteTargetName = name
-                            deleteTargetIsIndexing = isIndexing
-                            showDeleteConfirmation = true
+            VStack(spacing: 0) {
+                // Select All checkbox (only in edit mode)
+                if isEditMode && !workspaces.isEmpty {
+                    HStack {
+                        Toggle(isOn: Binding(
+                            get: { selectedWorkspaceIDs.count == workspaces.count },
+                            set: { newValue in
+                                if newValue {
+                                    selectedWorkspaceIDs = Set(workspaces.map { $0.id })
+                                } else {
+                                    selectedWorkspaceIDs.removeAll()
+                                }
+                            }
+                        )) {
+                            Text("Select All")
+                                .font(.subheadline)
                         }
-                    )
-                    .tag(workspace.id)
+                        .toggleStyle(.checkbox)
+
+                        Spacer()
+
+                        Text("\(selectedWorkspaceIDs.count) selected")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+
+                    Divider()
+                }
+
+                List(selection: isEditMode ? nil : $selectedWorkspaceID) {
+                    ForEach(workspaces) { workspace in
+                        HStack(spacing: 8) {
+                            if isEditMode {
+                                Toggle(isOn: Binding(
+                                    get: { selectedWorkspaceIDs.contains(workspace.id) },
+                                    set: { newValue in
+                                        if newValue {
+                                            selectedWorkspaceIDs.insert(workspace.id)
+                                        } else {
+                                            selectedWorkspaceIDs.remove(workspace.id)
+                                        }
+                                    }
+                                )) {
+                                    EmptyView()
+                                }
+                                .toggleStyle(.checkbox)
+                            }
+
+                            WorkspaceRowContent(
+                                id: workspace.id,
+                                name: workspace.name,
+                                indexStatus: workspace.indexStatus,
+                                lastIndexedAt: workspace.lastIndexedAt,
+                                isEditMode: isEditMode,
+                                onRequestDelete: { id, name, isIndexing in
+                                    deleteTargetID = id
+                                    deleteTargetName = name
+                                    deleteTargetIsIndexing = isIndexing
+                                    showDeleteConfirmation = true
+                                }
+                            )
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isEditMode {
+                                if selectedWorkspaceIDs.contains(workspace.id) {
+                                    selectedWorkspaceIDs.remove(workspace.id)
+                                } else {
+                                    selectedWorkspaceIDs.insert(workspace.id)
+                                }
+                            }
+                        }
+                        .tag(workspace.id)
+                    }
                 }
             }
             .navigationTitle("Workspaces")
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: { showingCreation = true }) {
-                        Label("New Workspace", systemImage: "plus")
+                if isEditMode {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Done") {
+                            isEditMode = false
+                            selectedWorkspaceIDs.removeAll()
+                        }
+                    }
+                    ToolbarItem(placement: .automatic) {
+                        Button(action: deleteSelected) {
+                            Label("Delete Selected", systemImage: "trash")
+                        }
+                        .disabled(selectedWorkspaceIDs.isEmpty)
+                    }
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: { showingCreation = true }) {
+                            Label("New Workspace", systemImage: "plus")
+                        }
+                    }
+                    ToolbarItem(placement: .automatic) {
+                        Button("Edit") {
+                            isEditMode = true
+                        }
+                        .disabled(workspaces.isEmpty)
                     }
                 }
             }
@@ -104,6 +190,25 @@ struct WorkspacePanelView: View {
         deleteTargetName = ""
         deleteTargetIsIndexing = false
     }
+
+    private func deleteSelected() {
+        // Clear selection first if we're deleting the selected workspace
+        if let selected = selectedWorkspaceID, selectedWorkspaceIDs.contains(selected) {
+            selectedWorkspaceID = nil
+        }
+
+        // Delete all selected workspaces
+        for id in selectedWorkspaceIDs {
+            if let workspace = workspaces.first(where: { $0.id == id }) {
+                workspace.indexStatus = .idle
+                modelContext.delete(workspace)
+            }
+        }
+
+        try? modelContext.save()
+        selectedWorkspaceIDs.removeAll()
+        isEditMode = false
+    }
 }
 
 // MARK: - Row Content (no object references, just values)
@@ -113,6 +218,7 @@ private struct WorkspaceRowContent: View {
     let name: String
     let indexStatus: IndexStatus
     let lastIndexedAt: Date?
+    var isEditMode: Bool = false
     let onRequestDelete: (UUID, String, Bool) -> Void
 
     @Query private var allFileEntries: [FileIndexEntry]
@@ -144,10 +250,12 @@ private struct WorkspaceRowContent: View {
         }
         .padding(.vertical, 4)
         .contextMenu {
-            Button(role: .destructive) {
-                onRequestDelete(id, name, indexStatus == .indexing)
-            } label: {
-                Label("Delete Workspace", systemImage: "trash")
+            if !isEditMode {
+                Button(role: .destructive) {
+                    onRequestDelete(id, name, indexStatus == .indexing)
+                } label: {
+                    Label("Delete Workspace", systemImage: "trash")
+                }
             }
         }
     }
