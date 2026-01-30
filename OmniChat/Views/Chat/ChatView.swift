@@ -33,6 +33,14 @@ struct ChatView: View {
                 ChatMemoryContextView(config: $memoryContextConfig)
             }
         }
+        .onAppear {
+            // Load memory config from conversation
+            memoryContextConfig = conversation.memoryContextConfig
+        }
+        .onChange(of: memoryContextConfig) { _, newConfig in
+            // Save memory config to conversation
+            conversation.memoryContextConfig = newConfig
+        }
     }
 
     private var chatContent: some View {
@@ -47,7 +55,7 @@ struct ChatView: View {
 
             Divider()
 
-            // Messages list
+            // Messages list with input area as safeAreaInset
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 16) {
@@ -75,43 +83,48 @@ struct ChatView: View {
                     }
                     .padding(.vertical)
                 }
+                .scrollBounceBehavior(.basedOnSize)
                 .onChange(of: conversation.messages.count) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
                 .onChange(of: currentStreamingMessage?.content) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
-            }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    VStack(spacing: 0) {
+                        // Error banner
+                        if let error = errorMessage {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.yellow)
+                                Text(error)
+                                    .font(.caption)
+                                Spacer()
+                                Button("Dismiss") {
+                                    errorMessage = nil
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+                            }
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                            .background(Color.red.opacity(0.1))
+                        }
 
-            // Error banner
-            if let error = errorMessage {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                    Text(error)
-                        .font(.caption)
-                    Spacer()
-                    Button("Dismiss") {
-                        errorMessage = nil
+                        Divider()
+
+                        // Input area
+                        MessageInputView(
+                            text: $inputText,
+                            pendingAttachments: $pendingAttachments,
+                            isLoading: isLoading,
+                            onSend: sendMessage
+                        )
+                        .padding()
+                        .background(.bar)
                     }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(Color.red.opacity(0.1))
             }
-
-            Divider()
-
-            // Input area
-            MessageInputView(
-                text: $inputText,
-                pendingAttachments: $pendingAttachments,
-                isLoading: isLoading,
-                onSend: sendMessage
-            )
-            .padding()
         }
     }
 

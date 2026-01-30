@@ -28,11 +28,11 @@
 		A1000013 /* AnthropicService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015 /* AnthropicService.swift */; };
 		A1000014 /* GoogleAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016 /* GoogleAIService.swift */; };
 		A1000015 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017 /* MarkdownView.swift */; };
-		A1000016 /* LaTeXView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018 /* LaTeXView.swift */; };
 		A1000019 /* Attachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000019 /* Attachment.swift */; };
 		A100001A /* AttachmentPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A /* AttachmentPreviewView.swift */; };
 		A100001B /* AttachmentDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001B /* AttachmentDisplayView.swift */; };
 		A100001C /* TitleGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001C /* TitleGenerationService.swift */; };
+		A1000029 /* DefaultMemoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000029 /* DefaultMemoryService.swift */; };
 		A100001D /* MemoryType.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001D /* MemoryType.swift */; };
 		A100001E /* MemoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* MemoryItem.swift */; };
 		A100001F /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001F /* Workspace.swift */; };
@@ -74,11 +74,11 @@
 		A2000015 /* AnthropicService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicService.swift; sourceTree = "<group>"; };
 		A2000016 /* GoogleAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAIService.swift; sourceTree = "<group>"; };
 		A2000017 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
-		A2000018 /* LaTeXView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaTeXView.swift; sourceTree = "<group>"; };
 		A2000019 /* Attachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Attachment.swift; sourceTree = "<group>"; };
 		A200001A /* AttachmentPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentPreviewView.swift; sourceTree = "<group>"; };
 		A200001B /* AttachmentDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentDisplayView.swift; sourceTree = "<group>"; };
 		A200001C /* TitleGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleGenerationService.swift; sourceTree = "<group>"; };
+		A2000029 /* DefaultMemoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultMemoryService.swift; sourceTree = "<group>"; };
 		A200001D /* MemoryType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryType.swift; sourceTree = "<group>"; };
 		A200001E /* MemoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryItem.swift; sourceTree = "<group>"; };
 		A200001F /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
@@ -216,7 +216,6 @@
 			children = (
 				A2000011 /* WelcomeView.swift */,
 				A2000017 /* MarkdownView.swift */,
-				A2000018 /* LaTeXView.swift */,
 				A200001A /* AttachmentPreviewView.swift */,
 				A200001B /* AttachmentDisplayView.swift */,
 			);
@@ -228,6 +227,7 @@
 			children = (
 				A2000012 /* KeychainService.swift */,
 				A200001C /* TitleGenerationService.swift */,
+				A2000029 /* DefaultMemoryService.swift */,
 				A2000026 /* SecurityScopedBookmarkService.swift */,
 				A2000027 /* FileIndexer.swift */,
 				A2000028 /* FileRetriever.swift */,
@@ -357,11 +357,11 @@
 				A1000013 /* AnthropicService.swift in Sources */,
 				A1000014 /* GoogleAIService.swift in Sources */,
 				A1000015 /* MarkdownView.swift in Sources */,
-				A1000016 /* LaTeXView.swift in Sources */,
 				A1000019 /* Attachment.swift in Sources */,
 				A100001A /* AttachmentPreviewView.swift in Sources */,
 				A100001B /* AttachmentDisplayView.swift in Sources */,
 				A100001C /* TitleGenerationService.swift in Sources */,
+				A1000029 /* DefaultMemoryService.swift in Sources */,
 				A100001D /* MemoryType.swift in Sources */,
 				A100001E /* MemoryItem.swift in Sources */,
 				A100001F /* Workspace.swift in Sources */,

@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// Configuration for memory context in a chat
-struct MemoryContextConfig: Codable {
+struct MemoryContextConfig: Codable, Equatable {
     var includeAllMemories: Bool = false
     var includeFacts: Bool = false
     var includePreferences: Bool = false

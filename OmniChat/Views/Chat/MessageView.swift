@@ -48,7 +48,6 @@ struct MessageView: View {
                 // User messages: plain text with bubble (only if there's text)
                 if !message.content.isEmpty {
                     Text(message.content)
-                        .textSelection(.enabled)
                         .font(.body)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
