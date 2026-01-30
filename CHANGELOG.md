@@ -2,20 +2,15 @@
 
 All notable changes to OmniChat will be documented in this file.
 
-## v0.2.3-beta (2026-01-30) - UI Fixes
-
-**Fixed:**
-- Workspace Panel: Sidebar selection now works properly (removed blocking tap gesture)
-- User messages now have a copy button (same as assistant messages)
-- Memory auto-select: Fixed predicate for finding auto-selected memories
-
-## v0.2.2-beta (2026-01-29) - Critical Bug Fixes & Bulk Delete
+## v0.2.2-beta (2026-01-30) - Critical Bug Fixes & Bulk Delete
 
 **Fixed:**
 - **Critical:** Messages no longer disappear after sending (SwiftData persistence fix)
 - **Critical:** Messages now go to the correct conversation (SwiftUI view identity fix with `.id()` modifier)
 - "Pin to top" now actually brings pinned memories to the top of the list
 - Workspace Panel toolbar layout fixed (New Workspace button was hidden)
+- Workspace Panel sidebar selection now works properly
+- User messages now have a copy button
 
 **Added:**
 - Bulk delete for Memory Panel: Edit mode with Select All checkbox and Delete Selected button
