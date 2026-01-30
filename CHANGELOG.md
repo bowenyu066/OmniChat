@@ -2,6 +2,13 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.2.3-beta (2026-01-30) - UI Fixes
+
+**Fixed:**
+- Workspace Panel: Sidebar selection now works properly (removed blocking tap gesture)
+- User messages now have a copy button (same as assistant messages)
+- Memory auto-select: Fixed predicate for finding auto-selected memories
+
 ## v0.2.2-beta (2026-01-29) - Critical Bug Fixes & Bulk Delete
 
 **Fixed:**
