@@ -2,6 +2,33 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.3.0-beta (2026-01-30) - RAG Layer & Cross-Conversation Memory
+
+**Added:**
+- **RAG (Retrieval-Augmented Generation) layer**: Semantic search across ALL past conversations
+- Automatic embedding generation for messages using OpenAI's `text-embedding-3-small`
+- Auto-summarization of user-assistant exchanges using GPT-4o-mini
+- Relevant past conversations now included in system prompt for contextual awareness
+- Background processing for embeddings and summaries (non-blocking UX)
+- Blockquote (`>`) rendering support in markdown
+
+**Fixed:**
+- Single line breaks in model responses now preserved (no longer merged into one line)
+- SwiftData threading issues causing conversations to disappear
+
+**Technical:**
+- New `EmbeddingService.swift`: OpenAI embeddings API integration (1536 dimensions)
+- New `SummaryService.swift`: Fast summarization with gpt-4o-mini
+- New `RAGService.swift`: Vector similarity search with cosine similarity
+- Message model extended with `embeddingData`, `summary`, `embeddedAt` fields
+- RAGService marked as `@MainActor` for SwiftData thread safety
+- Data extraction before async suspension points to prevent ModelContext issues
+
+**Changed:**
+- `getSystemPrompt()` now async to support RAG retrieval
+- Similarity threshold set to 0.3 for better recall
+- Markdown renderer uses `<br>` for line break preservation
+
 ## v0.2.2-beta (2026-01-30) - Critical Bug Fixes & Bulk Delete
 
 **Fixed:**
