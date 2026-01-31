@@ -11,7 +11,7 @@
   <p>It is designed to carry all your memories and allow smooth transitions among all the models you love.</p>
   <p>No more rushing around, no more crying alone. All of you are stored safely here.</p>
   <p>Models are just guests, but <b><i>you are the real landlord</i></b>.</p>
-  <img src="https://github.com/bowenyu066/OmniChat/blob/main/OmniChat/Resources/icon-256.png" alt="OmniChat">
+  <img src="https://github.com/bowenyu066/OmniChat/blob/main/OmniChat/Resources/new_icon-256.png" alt="OmniChat">
 </div>
 
 # OmniChat
