@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import os.log
+
+private let logger = Logger(subsystem: "com.omnichat.app", category: "ChatView")
 
 struct ChatView: View {
     @Bindable var conversation: Conversation
@@ -140,7 +143,7 @@ struct ChatView: View {
         }
     }
 
-    private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") -> String {
+    private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") async -> String {
         var prompt = """
         You are a helpful AI assistant. Keep responses clear and concise.
         """
@@ -152,6 +155,26 @@ struct ChatView: View {
 
             for memory in includedMemories {
                 prompt += "\n### \(memory.type.rawValue): \(memory.title)\n\(memory.body)\n"
+            }
+        }
+
+        // Layer 2: RAG - Past Conversations (semantic search across all conversations)
+        if !userPrompt.isEmpty {
+            do {
+                let ragResults = try await RAGService.shared.retrieveRelevantContext(
+                    for: userPrompt,
+                    excludeConversation: conversation,
+                    modelContext: modelContext,
+                    limit: 5
+                )
+
+                if !ragResults.isEmpty {
+                    prompt += "\n\n" + RAGService.formatResultsForPrompt(ragResults)
+                    logger.debug("RAG: Added \(ragResults.count) relevant past conversations to context")
+                }
+            } catch {
+                logger.warning("RAG retrieval failed: \(error.localizedDescription)")
+                // Continue without RAG results - graceful degradation
             }
         }
 
@@ -270,19 +293,19 @@ struct ChatView: View {
         var chatMessages = sortedMessages[0..<assistantIndex]
             .map { ChatMessage(from: $0) }
 
-        // Find the user prompt that triggered this response (the last user message before this assistant message)
-        let userPrompt = sortedMessages[0..<assistantIndex]
+        // Find the user message that triggered this response
+        let userMessage = sortedMessages[0..<assistantIndex]
             .reversed()
-            .first(where: { $0.role == .user })?
-            .content ?? ""
-
-        // Inject system prompt at the beginning if not present
-        if !chatMessages.contains(where: { $0.role == "system" }) {
-            let systemPrompt = getSystemPrompt(for: modelToUse.provider, userPrompt: userPrompt)
-            chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
-        }
+            .first(where: { $0.role == .user })
+        let userPrompt = userMessage?.content ?? ""
 
         Task {
+            // Inject system prompt at the beginning if not present (async for RAG)
+            if !chatMessages.contains(where: { $0.role == "system" }) {
+                let systemPrompt = await getSystemPrompt(for: modelToUse.provider, userPrompt: userPrompt)
+                chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+            }
+
             do {
                 let stream = service.streamMessage(messages: Array(chatMessages), model: modelToUse)
                 for try await chunk in stream {
@@ -295,6 +318,14 @@ struct ChatView: View {
                     conversation.updatedAt = Date()
                     isLoading = false
                     currentStreamingMessage = nil
+                }
+
+                // Background: Generate embeddings and summary for this exchange
+                if let userMessage = userMessage {
+                    await generateEmbeddingsAndSummary(
+                        userMessage: userMessage,
+                        assistantMessage: assistantMessage
+                    )
                 }
             } catch {
                 await MainActor.run {
@@ -378,6 +409,9 @@ struct ChatView: View {
         conversation.messages.append(userMessage)
         conversation.updatedAt = Date()
 
+        // Capture user content for async use
+        let userContent = inputText
+
         // Reset input state
         inputText = ""
         pendingAttachments = []
@@ -390,17 +424,6 @@ struct ChatView: View {
             isLoading = false
             errorMessage = "Please add your \(selectedModel.provider.displayName) API key in Settings (⌘,)"
             return
-        }
-
-        // Prepare messages for API
-        var chatMessages = conversation.messages
-            .sorted(by: { $0.timestamp < $1.timestamp })
-            .map { ChatMessage(from: $0) }
-
-        // Inject system prompt at the beginning if not present
-        if !chatMessages.contains(where: { $0.role == "system" }) {
-            let systemPrompt = getSystemPrompt(for: selectedModel.provider, userPrompt: userMessage.content)
-            chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
         }
 
         // Create assistant message for streaming
@@ -419,9 +442,24 @@ struct ChatView: View {
         conversation.messages.append(assistantMessage)
         currentStreamingMessage = assistantMessage
 
+        // Capture model for async use
+        let modelToUse = selectedModel
+
         Task {
+            // Prepare messages for API (inside Task to use async getSystemPrompt)
+            var chatMessages = conversation.messages
+                .sorted(by: { $0.timestamp < $1.timestamp })
+                .filter { $0.id != assistantMessage.id } // Exclude the empty assistant message we just created
+                .map { ChatMessage(from: $0) }
+
+            // Inject system prompt at the beginning if not present (async for RAG)
+            if !chatMessages.contains(where: { $0.role == "system" }) {
+                let systemPrompt = await getSystemPrompt(for: modelToUse.provider, userPrompt: userContent)
+                chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+            }
+
             do {
-                let stream = service.streamMessage(messages: chatMessages, model: selectedModel)
+                let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
                 for try await chunk in stream {
                     await MainActor.run {
                         assistantMessage.content += chunk
@@ -435,6 +473,12 @@ struct ChatView: View {
                     // Trigger title generation from full context (user + assistant)
                     conversation.generateTitleFromContextAsync()
                 }
+
+                // Background: Generate embeddings and summary for this exchange
+                await generateEmbeddingsAndSummary(
+                    userMessage: userMessage,
+                    assistantMessage: assistantMessage
+                )
             } catch {
                 await MainActor.run {
                     // Remove the empty assistant message on error
@@ -446,6 +490,80 @@ struct ChatView: View {
                     errorMessage = error.localizedDescription
                     isLoading = false
                     currentStreamingMessage = nil
+                }
+            }
+        }
+    }
+
+    // MARK: - RAG Background Processing
+
+    /// Generate embeddings and summary for a user-assistant message exchange in the background
+    private func generateEmbeddingsAndSummary(userMessage: Message, assistantMessage: Message) async {
+        // Skip if OpenAI API key is not configured
+        guard EmbeddingService.shared.isConfigured else {
+            logger.debug("RAG: Skipping embedding generation - OpenAI API key not configured")
+            return
+        }
+
+        // Skip if assistant message is empty (failed response)
+        guard !assistantMessage.content.isEmpty else {
+            return
+        }
+
+        logger.debug("RAG: Starting background embedding and summary generation")
+
+        // Capture message content and state BEFORE going to background
+        // (SwiftData objects must not be accessed from detached tasks)
+        let userContent = userMessage.content
+        let assistantContent = assistantMessage.content
+        let userNeedsEmbedding = !userContent.isEmpty && userMessage.embeddingVector == nil
+        let assistantNeedsEmbedding = assistantMessage.embeddingVector == nil
+        let needsSummary = userMessage.summary == nil || assistantMessage.summary == nil
+
+        // Run API calls in background task
+        Task(priority: .background) {
+            // 1. Generate embedding for user message
+            if userNeedsEmbedding {
+                do {
+                    let embedding = try await EmbeddingService.shared.generateEmbedding(for: userContent)
+                    await MainActor.run {
+                        userMessage.embeddingVector = embedding
+                        userMessage.embeddedAt = Date()
+                    }
+                    logger.debug("RAG: Generated embedding for user message")
+                } catch {
+                    logger.warning("RAG: Failed to generate user message embedding: \(error.localizedDescription)")
+                }
+            }
+
+            // 2. Generate embedding for assistant message
+            if assistantNeedsEmbedding {
+                do {
+                    let embedding = try await EmbeddingService.shared.generateEmbedding(for: assistantContent)
+                    await MainActor.run {
+                        assistantMessage.embeddingVector = embedding
+                        assistantMessage.embeddedAt = Date()
+                    }
+                    logger.debug("RAG: Generated embedding for assistant message")
+                } catch {
+                    logger.warning("RAG: Failed to generate assistant message embedding: \(error.localizedDescription)")
+                }
+            }
+
+            // 3. Generate summary for the exchange (store on both messages)
+            if needsSummary {
+                do {
+                    let summary = try await SummaryService.shared.generateSummary(
+                        userMessage: userContent,
+                        assistantMessage: assistantContent
+                    )
+                    await MainActor.run {
+                        userMessage.summary = summary
+                        assistantMessage.summary = summary
+                    }
+                    logger.debug("RAG: Generated summary for exchange: \(summary)")
+                } catch {
+                    logger.warning("RAG: Failed to generate summary: \(error.localizedDescription)")
                 }
             }
         }

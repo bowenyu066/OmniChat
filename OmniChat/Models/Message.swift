@@ -20,6 +20,11 @@ final class Message {
     @Relationship(deleteRule: .cascade, inverse: \Attachment.message)
     var attachments: [Attachment] = []
 
+    // RAG: Embedding and summary fields for semantic search
+    var embeddingData: Data?
+    var summary: String?
+    var embeddedAt: Date?
+
     init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil, attachments: [Attachment] = []) {
         self.id = id
         self.role = role
@@ -31,5 +36,33 @@ final class Message {
 
     var hasAttachments: Bool {
         !attachments.isEmpty
+    }
+
+    /// Computed property to get/set embedding vector as [Double]
+    var embeddingVector: [Double]? {
+        get {
+            guard let data = embeddingData else { return nil }
+            // Decode Data to [Double] - stored as raw bytes
+            let count = data.count / MemoryLayout<Double>.stride
+            guard count > 0 else { return nil }
+            return data.withUnsafeBytes { buffer in
+                Array(buffer.bindMemory(to: Double.self).prefix(count))
+            }
+        }
+        set {
+            guard let vector = newValue else {
+                embeddingData = nil
+                return
+            }
+            // Encode [Double] to Data as raw bytes
+            embeddingData = vector.withUnsafeBufferPointer { buffer in
+                Data(buffer: buffer)
+            }
+        }
+    }
+
+    /// Check if this message has been embedded for RAG
+    var hasEmbedding: Bool {
+        embeddingData != nil && embeddedAt != nil
     }
 }

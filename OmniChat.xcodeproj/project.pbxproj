@@ -48,6 +48,9 @@
 		A17B4A5B /* WorkspacePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DFB60D /* WorkspacePanelView.swift */; };
 		A199A2B2 /* WorkspaceCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BADB46 /* WorkspaceCreationView.swift */; };
 		A1C222CC /* WorkspaceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B39E0F /* WorkspaceDetailView.swift */; };
+		A100002A /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002A /* EmbeddingService.swift */; };
+		A100002B /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002B /* SummaryService.swift */; };
+		A100002C /* RAGService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002C /* RAGService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -94,6 +97,9 @@
 		A2DFB60D /* WorkspacePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePanelView.swift; sourceTree = "<group>"; };
 		A2BADB46 /* WorkspaceCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceCreationView.swift; sourceTree = "<group>"; };
 		A2B39E0F /* WorkspaceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDetailView.swift; sourceTree = "<group>"; };
+		A200002A /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
+		A200002B /* SummaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryService.swift; sourceTree = "<group>"; };
+		A200002C /* RAGService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAGService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -231,6 +237,9 @@
 				A2000026 /* SecurityScopedBookmarkService.swift */,
 				A2000027 /* FileIndexer.swift */,
 				A2000028 /* FileRetriever.swift */,
+				A200002A /* EmbeddingService.swift */,
+				A200002B /* SummaryService.swift */,
+				A200002C /* RAGService.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -377,6 +386,9 @@
 				A17B4A5B /* WorkspacePanelView.swift in Sources */,
 				A199A2B2 /* WorkspaceCreationView.swift in Sources */,
 				A1C222CC /* WorkspaceDetailView.swift in Sources */,
+				A100002A /* EmbeddingService.swift in Sources */,
+				A100002B /* SummaryService.swift in Sources */,
+				A100002C /* RAGService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

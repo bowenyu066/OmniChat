@@ -239,6 +239,27 @@ struct UnifiedMessageWebView: NSViewRepresentable {
                     border-top: 1px solid rgba(128, 128, 128, 0.3);
                 }
 
+                /* Blockquotes */
+                blockquote {
+                    margin: 1em 0;
+                    padding: 0.5em 1em;
+                    border-left: 4px solid rgba(128, 128, 128, 0.4);
+                    background: rgba(128, 128, 128, 0.05);
+                    border-radius: 0 4px 4px 0;
+                }
+
+                blockquote p {
+                    margin: 0.4em 0;
+                }
+
+                blockquote p:first-child {
+                    margin-top: 0;
+                }
+
+                blockquote p:last-child {
+                    margin-bottom: 0;
+                }
+
                 /* Code blocks */
                 .code-block {
                     margin: 1em 0;
@@ -444,6 +465,8 @@ struct UnifiedMessageWebView: NSViewRepresentable {
         var inUnorderedList = false
         var inOrderedList = false
         var listItems: [String] = []
+        var inBlockquote = false
+        var blockquoteLines: [String] = []
 
         func closeParagraph() {
             if inParagraph {
@@ -469,8 +492,40 @@ struct UnifiedMessageWebView: NSViewRepresentable {
             }
         }
 
+        func closeBlockquote() {
+            if inBlockquote {
+                // Process the blockquote content (which may contain its own markdown)
+                let blockquoteContent = blockquoteLines.joined(separator: "\n")
+                // Don't recursively call convertMarkdownToHTML to avoid escaping issues with LaTeX
+                // Instead, just wrap content in paragraphs based on blank lines
+                let processedContent = processBlockquoteContent(blockquoteContent)
+                htmlLines.append("<blockquote>\(processedContent)</blockquote>")
+                blockquoteLines = []
+                inBlockquote = false
+            }
+        }
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Check for blockquote first (before other processing)
+            if trimmed.hasPrefix(">") {
+                closeParagraph()
+                closeList()
+                inBlockquote = true
+                // Remove the > and optional space after it
+                var content = String(trimmed.dropFirst())
+                if content.hasPrefix(" ") {
+                    content = String(content.dropFirst())
+                }
+                blockquoteLines.append(content)
+                continue
+            }
+
+            // If we were in a blockquote and hit a non-blockquote line, close it
+            if inBlockquote && !trimmed.hasPrefix(">") {
+                closeBlockquote()
+            }
 
             // Headers
             if trimmed.hasPrefix("### ") {
@@ -523,11 +578,42 @@ struct UnifiedMessageWebView: NSViewRepresentable {
             }
         }
 
-        // Close final paragraph or list if needed
+        // Close final paragraph, list, or blockquote if needed
         closeParagraph()
         closeList()
+        closeBlockquote()
 
         return htmlLines.map { processInlineFormatting($0) }.joined(separator: "\n")
+    }
+
+    /// Process blockquote content - handles paragraphs and preserves LaTeX
+    private func processBlockquoteContent(_ content: String) -> String {
+        let lines = content.components(separatedBy: "\n")
+        var result: [String] = []
+        var currentPara: [String] = []
+
+        func closePara() {
+            if !currentPara.isEmpty {
+                let paraContent = currentPara.joined(separator: " ")
+                // Escape HTML but preserve $ for LaTeX
+                let escaped = paraContent
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                result.append("<p>\(processInlineFormatting(escaped))</p>")
+                currentPara = []
+            }
+        }
+
+        for line in lines {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                closePara()
+            } else {
+                currentPara.append(line)
+            }
+        }
+        closePara()
+
+        return result.joined(separator: "\n")
     }
 
     private func isHorizontalRule(_ line: String) -> Bool {
