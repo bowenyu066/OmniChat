@@ -470,7 +470,8 @@ struct UnifiedMessageWebView: NSViewRepresentable {
 
         func closeParagraph() {
             if inParagraph {
-                htmlLines.append("<p>" + currentParagraph.joined(separator: " ") + "</p>")
+                // Use <br> to preserve single line breaks (chat-friendly behavior)
+                htmlLines.append("<p>" + currentParagraph.joined(separator: "<br>") + "</p>")
                 currentParagraph = []
                 inParagraph = false
             }
@@ -594,11 +595,14 @@ struct UnifiedMessageWebView: NSViewRepresentable {
 
         func closePara() {
             if !currentPara.isEmpty {
-                let paraContent = currentPara.joined(separator: " ")
-                // Escape HTML but preserve $ for LaTeX
+                // Use <br> to preserve single line breaks
+                let paraContent = currentPara.joined(separator: "<br>")
+                // Escape HTML but preserve $ for LaTeX and <br> tags
                 let escaped = paraContent
                     .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<br>", with: "___BR_PLACEHOLDER___")
                     .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: "___BR_PLACEHOLDER___", with: "<br>")
                 result.append("<p>\(processInlineFormatting(escaped))</p>")
                 currentPara = []
             }
