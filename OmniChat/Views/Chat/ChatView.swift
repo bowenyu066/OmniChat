@@ -22,9 +22,17 @@ struct ChatView: View {
     @State private var showMemoryPanel = true
     @State private var memoryContextConfig = MemoryContextConfig()
 
+    // Throttle scroll updates to reduce re-renders during streaming
+    @State private var lastScrollUpdate = Date.distantPast
+
     var onBranchConversation: ((Conversation) -> Void)?
 
     private let apiServiceFactory = APIServiceFactory()
+
+    // Computed property to avoid re-sorting on every render
+    private var sortedMessages: [Message] {
+        conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })
+    }
 
     var body: some View {
         HSplitView {
@@ -62,7 +70,7 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        ForEach(conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })) { message in
+                        ForEach(sortedMessages) { message in
                             MessageView(
                                 message: message,
                                 onRetry: message.role == .assistant ? { retryMessage(message) } : nil,
@@ -91,7 +99,13 @@ struct ChatView: View {
                     scrollToBottom(proxy: proxy)
                 }
                 .onChange(of: currentStreamingMessage?.content) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    // Throttle scroll updates to max 10 per second during streaming
+                    // This prevents excessive re-renders when text chunks arrive rapidly
+                    let now = Date()
+                    if now.timeIntervalSince(lastScrollUpdate) >= 0.1 {
+                        lastScrollUpdate = now
+                        scrollToBottom(proxy: proxy)
+                    }
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
@@ -132,7 +146,8 @@ struct ChatView: View {
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let lastMessage = conversation.messages.sorted(by: { $0.timestamp < $1.timestamp }).last {
+        // Use pre-sorted messages to avoid re-sorting
+        if let lastMessage = sortedMessages.last {
             withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
             }
