@@ -51,6 +51,9 @@
 		A100002A /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002A /* EmbeddingService.swift */; };
 		A100002B /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002B /* SummaryService.swift */; };
 		A100002C /* RAGService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002C /* RAGService.swift */; };
+		A100002D /* ChatGPTExportModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002D /* ChatGPTExportModels.swift */; };
+		A100002E /* ChatGPTImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002E /* ChatGPTImportService.swift */; };
+		A100002F /* ImportDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002F /* ImportDataView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -100,6 +103,9 @@
 		A200002A /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
 		A200002B /* SummaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryService.swift; sourceTree = "<group>"; };
 		A200002C /* RAGService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAGService.swift; sourceTree = "<group>"; };
+		A200002D /* ChatGPTExportModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTExportModels.swift; sourceTree = "<group>"; };
+		A200002E /* ChatGPTImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTImportService.swift; sourceTree = "<group>"; };
+		A200002F /* ImportDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportDataView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -161,6 +167,7 @@
 				A200001E /* MemoryItem.swift */,
 				A200001F /* Workspace.swift */,
 				A2000025 /* FileIndexEntry.swift */,
+				A200002D /* ChatGPTExportModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -213,6 +220,7 @@
 			children = (
 				A200000C /* SettingsView.swift */,
 				A200000D /* APIKeyRow.swift */,
+				A200002F /* ImportDataView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -240,6 +248,7 @@
 				A200002A /* EmbeddingService.swift */,
 				A200002B /* SummaryService.swift */,
 				A200002C /* RAGService.swift */,
+				A200002E /* ChatGPTImportService.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -389,6 +398,9 @@
 				A100002A /* EmbeddingService.swift in Sources */,
 				A100002B /* SummaryService.swift in Sources */,
 				A100002C /* RAGService.swift in Sources */,
+				A100002D /* ChatGPTExportModels.swift in Sources */,
+				A100002E /* ChatGPTImportService.swift in Sources */,
+				A100002F /* ImportDataView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

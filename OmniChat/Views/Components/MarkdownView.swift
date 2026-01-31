@@ -260,6 +260,34 @@ struct UnifiedMessageWebView: NSViewRepresentable {
                     margin-bottom: 0;
                 }
 
+                /* Tables */
+                table {
+                    margin: 1em 0;
+                    border-collapse: collapse;
+                    width: 100%;
+                    font-size: 0.95em;
+                }
+
+                thead {
+                    border-bottom: 2px solid rgba(128, 128, 128, 0.3);
+                }
+
+                th {
+                    font-weight: 600;
+                    text-align: left;
+                    padding: 8px 12px;
+                    background: rgba(128, 128, 128, 0.08);
+                }
+
+                td {
+                    padding: 8px 12px;
+                    border-top: 1px solid rgba(128, 128, 128, 0.15);
+                }
+
+                tr:hover {
+                    background: rgba(128, 128, 128, 0.05);
+                }
+
                 /* Code blocks */
                 .code-block {
                     margin: 1em 0;
@@ -388,11 +416,15 @@ struct UnifiedMessageWebView: NSViewRepresentable {
     }
 
     private func preprocessContent(_ text: String) -> String {
-        var html = ""
-        var remaining = text
+        // First, protect LaTeX from markdown processing
+        let protected = protectLaTeX(text)
 
+        var html = ""
+        var remaining = protected.text
+
+        // Now process code blocks and markdown
         while !remaining.isEmpty {
-            // Check for code blocks first: ```language\ncode\n```
+            // Check for code blocks: ```language\ncode\n```
             let codePattern = #"```(\w*)\n([\s\S]*?)```"#
             if let codeMatch = remaining.range(of: codePattern, options: .regularExpression) {
                 // Add text before code block
@@ -415,7 +447,82 @@ struct UnifiedMessageWebView: NSViewRepresentable {
             break
         }
 
+        // Restore protected LaTeX
+        for (placeholder, content) in protected.segments {
+            html = html.replacingOccurrences(of: placeholder, with: content)
+        }
+
         return html
+    }
+
+    /// Protect LaTeX blocks from markdown processing
+    private func protectLaTeX(_ text: String) -> (text: String, segments: [(String, String)]) {
+        var result = text
+        var segments: [(String, String)] = []
+        var counter = 0
+
+        // Protect \[...\] display math
+        let blockPattern = #"\\\[([\s\S]*?)\\\]"#
+        if let regex = try? NSRegularExpression(pattern: blockPattern) {
+            let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+            // Process in reverse to maintain string indices
+            for match in matches.reversed() {
+                if let range = Range(match.range, in: result) {
+                    let content = String(result[range])
+                    let placeholder = "___LATEX_BLOCK_\(counter)___"
+                    segments.append((placeholder, content))
+                    result.replaceSubrange(range, with: placeholder)
+                    counter += 1
+                }
+            }
+        }
+
+        // Protect $$...$$ display math
+        let dollarBlockPattern = #"\$\$([\s\S]*?)\$\$"#
+        if let regex = try? NSRegularExpression(pattern: dollarBlockPattern) {
+            let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+            for match in matches.reversed() {
+                if let range = Range(match.range, in: result) {
+                    let content = String(result[range])
+                    let placeholder = "___LATEX_BLOCK_\(counter)___"
+                    segments.append((placeholder, content))
+                    result.replaceSubrange(range, with: placeholder)
+                    counter += 1
+                }
+            }
+        }
+
+        // Protect \(...\) inline math
+        let parenInlinePattern = #"\\\((.+?)\\\)"#
+        if let regex = try? NSRegularExpression(pattern: parenInlinePattern) {
+            let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+            for match in matches.reversed() {
+                if let range = Range(match.range, in: result) {
+                    let content = String(result[range])
+                    let placeholder = "___LATEX_INLINE_\(counter)___"
+                    segments.append((placeholder, content))
+                    result.replaceSubrange(range, with: placeholder)
+                    counter += 1
+                }
+            }
+        }
+
+        // Protect $...$ inline math
+        let inlinePattern = #"\$([^\$\n]+?)\$"#
+        if let regex = try? NSRegularExpression(pattern: inlinePattern) {
+            let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+            for match in matches.reversed() {
+                if let range = Range(match.range, in: result) {
+                    let content = String(result[range])
+                    let placeholder = "___LATEX_INLINE_\(counter)___"
+                    segments.append((placeholder, content))
+                    result.replaceSubrange(range, with: placeholder)
+                    counter += 1
+                }
+            }
+        }
+
+        return (result, segments)
     }
 
     private func parseCodeBlock(_ block: String) -> (language: String?, code: String)? {
@@ -467,6 +574,8 @@ struct UnifiedMessageWebView: NSViewRepresentable {
         var listItems: [String] = []
         var inBlockquote = false
         var blockquoteLines: [String] = []
+        var inTable = false
+        var tableLines: [String] = []
 
         func closeParagraph() {
             if inParagraph {
@@ -506,13 +615,39 @@ struct UnifiedMessageWebView: NSViewRepresentable {
             }
         }
 
+        func closeTable() {
+            if inTable {
+                if let tableHTML = parseTable(tableLines) {
+                    htmlLines.append(tableHTML)
+                }
+                tableLines = []
+                inTable = false
+            }
+        }
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            // Check for table rows (contains pipes)
+            if trimmed.contains("|") && !trimmed.hasPrefix(">") {
+                closeParagraph()
+                closeList()
+                closeBlockquote()
+                inTable = true
+                tableLines.append(trimmed)
+                continue
+            }
+
+            // If we were in a table and hit a non-table line, close it
+            if inTable && !trimmed.contains("|") {
+                closeTable()
+            }
 
             // Check for blockquote first (before other processing)
             if trimmed.hasPrefix(">") {
                 closeParagraph()
                 closeList()
+                closeTable()
                 inBlockquote = true
                 // Remove the > and optional space after it
                 var content = String(trimmed.dropFirst())
@@ -579,12 +714,49 @@ struct UnifiedMessageWebView: NSViewRepresentable {
             }
         }
 
-        // Close final paragraph, list, or blockquote if needed
+        // Close final paragraph, list, table, or blockquote if needed
         closeParagraph()
         closeList()
+        closeTable()
         closeBlockquote()
 
         return htmlLines.map { processInlineFormatting($0) }.joined(separator: "\n")
+    }
+
+    /// Parse markdown table to HTML
+    private func parseTable(_ lines: [String]) -> String? {
+        guard lines.count >= 2 else { return nil }
+
+        // First line is header
+        let headerCells = lines[0].split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !headerCells.isEmpty else { return nil }
+
+        // Second line should be separator (|---|---|)
+        if lines.count > 1 {
+            let separator = lines[1]
+            if !separator.contains("-") { return nil }
+        }
+
+        var html = "<table>\n<thead>\n<tr>\n"
+        for cell in headerCells {
+            html += "<th>\(escapeHTML(cell))</th>\n"
+        }
+        html += "</tr>\n</thead>\n<tbody>\n"
+
+        // Process data rows (skip header and separator)
+        for line in lines.dropFirst(2) {
+            let cells = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            if cells.isEmpty { continue }
+
+            html += "<tr>\n"
+            for cell in cells {
+                html += "<td>\(escapeHTML(cell))</td>\n"
+            }
+            html += "</tr>\n"
+        }
+
+        html += "</tbody>\n</table>"
+        return html
     }
 
     /// Process blockquote content - handles paragraphs and preserves LaTeX
@@ -679,6 +851,10 @@ struct UnifiedMessageWebView: NSViewRepresentable {
 
         $$E^2 = (pc)^2 + (mc^2)^2$$
 
+        Or using alternative block delimiters:
+
+        \\[E = mc^2\\]
+
         where:
 
         - $E$ is the total (relativistic) energy,
@@ -686,19 +862,13 @@ struct UnifiedMessageWebView: NSViewRepresentable {
         - $m$ is the invariant (rest) mass,
         - $c$ is the speed of light.
 
-        Common special cases:
+        Here's a comparison table:
 
-        - **Particle at rest** ($p = 0$):
-
-        $$E = mc^2$$
-
-        - **Massless particle** ($m = 0$, e.g., a photon):
-
-        $$E = pc$$
-
-        Equivalently, it can be written as an invariant:
-
-        $$E^2 - (pc)^2 = (mc^2)^2$$
+        | Particle Type | Mass | Energy Formula |
+        |--------------|------|----------------|
+        | At rest | $m$ | $E = mc^2$ |
+        | Massless | $0$ | $E = pc$ |
+        | General | $m$ | $E^2 = (pc)^2 + (mc^2)^2$ |
 
         This is **bold** and *italic* text with inline math like $\\alpha = \\beta + 1$.
 

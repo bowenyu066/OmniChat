@@ -16,8 +16,13 @@ struct SettingsView: View {
                 .tabItem {
                     Label("General", systemImage: "gear")
                 }
+
+            ImportDataView()
+                .tabItem {
+                    Label("Import", systemImage: "square.and.arrow.down")
+                }
         }
-        .frame(width: 550, height: 350)
+        .frame(width: 550, height: 450)
         .onDisappear {
             // Clear settings auth when leaving settings
             authManager.clearSettingsAuth()

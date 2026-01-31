@@ -205,6 +205,7 @@ struct OmniChatApp: App {
         Settings {
             SettingsView().environmentObject(authManager)
         }
+        .modelContainer(sharedModelContainer)
 
         // Memory Panel Window
         Window("Memory Panel", id: "memory-panel") {
