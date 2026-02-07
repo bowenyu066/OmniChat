@@ -53,9 +53,9 @@ open OmniChat/OmniChat.xcodeproj
 
 ## Available Models
 
-**OpenAI:** GPT-5.2 (reasoning), GPT-5 Mini, GPT-4o
-**Anthropic:** Claude Opus 4.5, Sonnet 4.5, Haiku 4.5
-**Google:** Gemini 3 Pro, Gemini 3 Flash (Preview)
+- **OpenAI:** GPT-5.2 (reasoning), GPT-5 Mini, GPT-4o
+- **Anthropic:** Claude Opus 4.5, Sonnet 4.5, Haiku 4.5
+- **Google:** Gemini 3 Pro, Gemini 3 Flash (Preview)
 
 ## Memory System
 
