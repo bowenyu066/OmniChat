@@ -2,6 +2,23 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.3.1-beta (2026-02-07) - Performance Fix
+
+**Fixed:**
+- **Critical:** Streaming responses now 21x faster (288s → 13s for typical responses)
+- Root cause: SwiftData updates during streaming triggered SwiftUI re-renders and WKWebView processes, blocking network I/O
+
+**Technical:**
+- Added `streamingContent` @State buffer to avoid SwiftData updates during streaming
+- Throttled UI updates to 50ms intervals (from per-chunk)
+- SwiftData now updated only once when streaming completes
+- Added comprehensive performance logging (PERF_*) for debugging
+- MessageView now accepts `streamingContent` parameter for buffer display
+
+**Performance Metrics:**
+- Before: 288 seconds, 147 slow chunks (100%), 147 UI updates
+- After: 13 seconds, 2 slow chunks (0.4%), ~20 UI updates
+
 ## v0.3.0-beta (2026-01-30) - RAG Layer & Cross-Conversation Memory
 
 **Added:**
