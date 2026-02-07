@@ -21,6 +21,14 @@ struct ChatView: View {
     @State private var currentStreamingMessage: Message?
     @State private var showMemoryPanel = true
     @State private var memoryContextConfig = MemoryContextConfig()
+    @State private var sortedMessagesCache: [Message] = []
+    @State private var activeStreamID: UUID?
+    @State private var activeStreamScrollEvents = 0
+    @State private var activeStreamUIUpdates = 0
+
+    // Streaming content buffer - avoids SwiftData updates during streaming
+    // This is updated frequently, while SwiftData is only updated when streaming completes
+    @State private var streamingContent: String = ""
 
     // Throttle scroll updates to reduce re-renders during streaming
     @State private var lastScrollUpdate = Date.distantPast
@@ -28,11 +36,6 @@ struct ChatView: View {
     var onBranchConversation: ((Conversation) -> Void)?
 
     private let apiServiceFactory = APIServiceFactory()
-
-    // Computed property to avoid re-sorting on every render
-    private var sortedMessages: [Message] {
-        conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })
-    }
 
     var body: some View {
         HSplitView {
@@ -47,6 +50,7 @@ struct ChatView: View {
         .onAppear {
             // Load memory config from conversation
             memoryContextConfig = conversation.memoryContextConfig
+            refreshSortedMessages()
         }
         .onChange(of: memoryContextConfig) { _, newConfig in
             // Save memory config to conversation
@@ -56,114 +60,160 @@ struct ChatView: View {
 
     private var chatContent: some View {
         VStack(spacing: 0) {
-            // Header with title, model selector, and workspace selector
-            ChatHeaderView(
-                conversation: conversation,
-                workspaces: allWorkspaces,
-                selectedModel: $selectedModel,
-                showMemoryPanel: $showMemoryPanel
-            )
-
+            chatHeader
             Divider()
+            messagesScrollView
+        }
+    }
 
-            // Messages list with input area as safeAreaInset
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        ForEach(sortedMessages) { message in
-                            MessageView(
-                                message: message,
-                                onRetry: message.role == .assistant ? { retryMessage(message) } : nil,
-                                onSwitchModel: message.role == .assistant ? { newModel in switchModel(for: message, to: newModel) } : nil,
-                                onBranch: message.role == .assistant ? { branchFromMessage(message) } : nil
-                            )
-                            .id(message.id)
-                        }
+    private var chatHeader: some View {
+        ChatHeaderView(
+            conversation: conversation,
+            workspaces: allWorkspaces,
+            selectedModel: $selectedModel,
+            showMemoryPanel: $showMemoryPanel
+        )
+    }
 
-                        if isLoading {
-                            HStack {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Thinking...")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 24)
-                            .id("loading")
-                        }
-                    }
-                    .padding(.vertical)
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .onChange(of: conversation.messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
-                .onChange(of: currentStreamingMessage?.content) { _, _ in
-                    // Throttle scroll updates to max 10 per second during streaming
-                    // This prevents excessive re-renders when text chunks arrive rapidly
-                    let now = Date()
-                    if now.timeIntervalSince(lastScrollUpdate) >= 0.1 {
-                        lastScrollUpdate = now
-                        scrollToBottom(proxy: proxy)
-                    }
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: 0) {
-                        // Error banner
-                        if let error = errorMessage {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.yellow)
-                                Text(error)
-                                    .font(.caption)
-                                Spacer()
-                                Button("Dismiss") {
-                                    errorMessage = nil
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.caption)
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .background(Color.red.opacity(0.1))
-                        }
-
-                        Divider()
-
-                        // Input area
-                        MessageInputView(
-                            text: $inputText,
-                            pendingAttachments: $pendingAttachments,
-                            isLoading: isLoading,
-                            onSend: sendMessage
-                        )
-                        .padding()
-                        .background(.bar)
-                    }
-                }
+    private var messagesScrollView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                messagesList
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .onChange(of: conversation.messages.count) { _, _ in
+                refreshSortedMessages()
+                scrollToBottom(proxy: proxy, animated: true)
+            }
+            .onChange(of: streamingContent) { _, _ in
+                handleStreamingContentChange(proxy: proxy)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomInputArea
             }
         }
     }
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        // Use pre-sorted messages to avoid re-sorting
-        if let lastMessage = sortedMessages.last {
-            withAnimation(.easeOut(duration: 0.2)) {
+    private var messagesList: some View {
+        LazyVStack(spacing: 16) {
+            ForEach(sortedMessagesCache) { message in
+                let isThisStreaming = currentStreamingMessage?.id == message.id
+                MessageView(
+                    message: message,
+                    isStreaming: isThisStreaming,
+                    streamingContent: isThisStreaming ? streamingContent : nil,
+                    onRetry: message.role == .assistant ? { retryMessage(message) } : nil,
+                    onSwitchModel: message.role == .assistant ? { newModel in switchModel(for: message, to: newModel) } : nil,
+                    onBranch: message.role == .assistant ? { branchFromMessage(message) } : nil
+                )
+                .id(message.id)
+            }
+
+            if isLoading {
+                loadingIndicator
+            }
+        }
+        .padding(.vertical)
+    }
+
+    private var loadingIndicator: some View {
+        HStack {
+            ProgressView()
+                .scaleEffect(0.8)
+            Text("Thinking...")
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 24)
+        .id("loading")
+    }
+
+    private var bottomInputArea: some View {
+        VStack(spacing: 0) {
+            errorBanner
+            Divider()
+            inputView
+        }
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let error = errorMessage {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.yellow)
+                Text(error)
+                    .font(.caption)
+                Spacer()
+                Button("Dismiss") {
+                    errorMessage = nil
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color.red.opacity(0.1))
+        }
+    }
+
+    private var inputView: some View {
+        MessageInputView(
+            text: $inputText,
+            pendingAttachments: $pendingAttachments,
+            isLoading: isLoading,
+            onSend: sendMessage
+        )
+        .padding()
+        .background(.bar)
+    }
+
+    private func handleStreamingContentChange(proxy: ScrollViewProxy) {
+        // Throttle scroll updates to max 10 per second during streaming
+        // This prevents excessive re-renders when text chunks arrive rapidly
+        let now = Date()
+        if now.timeIntervalSince(lastScrollUpdate) >= 0.1 {
+            lastScrollUpdate = now
+            if activeStreamID != nil {
+                activeStreamScrollEvents += 1
+            }
+            scrollToBottom(proxy: proxy, animated: false)
+        }
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
+        if let lastMessage = sortedMessagesCache.last {
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                }
+            } else {
                 proxy.scrollTo(lastMessage.id, anchor: .bottom)
             }
         } else if isLoading {
-            withAnimation {
+            if animated {
+                withAnimation {
+                    proxy.scrollTo("loading", anchor: .bottom)
+                }
+            } else {
                 proxy.scrollTo("loading", anchor: .bottom)
             }
         }
     }
 
+    private func refreshSortedMessages() {
+        sortedMessagesCache = conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })
+    }
+
     private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") async -> String {
+        let startTime = Date()
+
         var prompt = """
         You are a helpful AI assistant. Keep responses clear and concise.
         """
 
         // Layer 1: Include memories based on config (highest priority)
+        let memoryStartTime = Date()
         let includedMemories = getIncludedMemories()
         if !includedMemories.isEmpty {
             prompt += "\n\n## User Memory\nThe following information has been provided by the user as context. Use this knowledge when relevant:\n"
@@ -172,8 +222,11 @@ struct ChatView: View {
                 prompt += "\n### \(memory.type.rawValue): \(memory.title)\n\(memory.body)\n"
             }
         }
+        let memoryMs = Int(Date().timeIntervalSince(memoryStartTime) * 1000)
 
         // Layer 2: RAG - Past Conversations (semantic search across all conversations)
+        let ragStartTime = Date()
+        var ragResultCount = 0
         if !userPrompt.isEmpty {
             do {
                 let ragResults = try await RAGService.shared.retrieveRelevantContext(
@@ -183,6 +236,7 @@ struct ChatView: View {
                     limit: 5
                 )
 
+                ragResultCount = ragResults.count
                 if !ragResults.isEmpty {
                     prompt += "\n\n" + RAGService.formatResultsForPrompt(ragResults)
                     logger.debug("RAG: Added \(ragResults.count) relevant past conversations to context")
@@ -192,8 +246,11 @@ struct ChatView: View {
                 // Continue without RAG results - graceful degradation
             }
         }
+        let ragMs = Int(Date().timeIntervalSince(ragStartTime) * 1000)
 
         // Layer 3: Include workspace files if workspace is selected
+        let workspaceStartTime = Date()
+        var workspaceSnippetCount = 0
         if let workspace = conversation.workspace, !userPrompt.isEmpty {
             let fileSnippets = FileRetriever.shared.retrieveSnippets(
                 for: userPrompt,
@@ -201,6 +258,7 @@ struct ChatView: View {
                 limit: 5
             )
 
+            workspaceSnippetCount = fileSnippets.count
             if !fileSnippets.isEmpty {
                 prompt += "\n\n## Workspace Files\nThe following code snippets from the workspace may be relevant. Always cite files when referencing them:\n"
 
@@ -211,6 +269,10 @@ struct ChatView: View {
                 prompt += "\nWhen referencing these files, always use the format `file.swift:line` for clarity.\n"
             }
         }
+        let workspaceMs = Int(Date().timeIntervalSince(workspaceStartTime) * 1000)
+
+        let totalMs = Int(Date().timeIntervalSince(startTime) * 1000)
+        perfLog("PERF_SYSTEM_PROMPT total_ms=\(totalMs) memory_ms=\(memoryMs) rag_ms=\(ragMs) workspace_ms=\(workspaceMs) memories=\(includedMemories.count) rag_results=\(ragResultCount) snippets=\(workspaceSnippetCount) prompt_chars=\(prompt.count)")
 
         return prompt
     }
@@ -287,6 +349,7 @@ struct ChatView: View {
     private func regenerateResponse(for assistantMessage: Message) {
         isLoading = true
         currentStreamingMessage = assistantMessage
+        streamingContent = ""  // Reset streaming buffer
 
         // Prepare service
         let modelToUse = AIModel(rawValue: assistantMessage.modelUsed ?? selectedModel.rawValue) ?? selectedModel
@@ -322,14 +385,26 @@ struct ChatView: View {
             }
 
             do {
+                var contentBuffer = ""
+                var lastUIUpdateTime = Date()
+
                 let stream = service.streamMessage(messages: Array(chatMessages), model: modelToUse)
                 for try await chunk in stream {
-                    await MainActor.run {
-                        assistantMessage.content += chunk
+                    contentBuffer += chunk
+                    let now = Date()
+                    if now.timeIntervalSince(lastUIUpdateTime) >= 0.05 {
+                        lastUIUpdateTime = now
+                        let bufferSnapshot = contentBuffer
+                        await MainActor.run {
+                            streamingContent = bufferSnapshot
+                        }
                     }
                 }
 
+                let finalContent = contentBuffer
                 await MainActor.run {
+                    assistantMessage.content = finalContent
+                    streamingContent = ""
                     conversation.updatedAt = Date()
                     isLoading = false
                     currentStreamingMessage = nil
@@ -461,11 +536,16 @@ struct ChatView: View {
         let modelToUse = selectedModel
 
         Task {
+            let taskStartedAt = Date()
+
             // Prepare messages for API (inside Task to use async getSystemPrompt)
             var chatMessages = conversation.messages
                 .sorted(by: { $0.timestamp < $1.timestamp })
                 .filter { $0.id != assistantMessage.id } // Exclude the empty assistant message we just created
                 .map { ChatMessage(from: $0) }
+
+            let messagesBuiltAt = Date()
+            let messagesBuildMs = Int(messagesBuiltAt.timeIntervalSince(taskStartedAt) * 1000)
 
             // Inject system prompt at the beginning if not present (async for RAG)
             if !chatMessages.contains(where: { $0.role == "system" }) {
@@ -473,15 +553,93 @@ struct ChatView: View {
                 chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
             }
 
+            let systemPromptBuiltAt = Date()
+            let systemPromptMs = Int(systemPromptBuiltAt.timeIntervalSince(messagesBuiltAt) * 1000)
+
+            // Calculate total payload size
+            let totalChars = chatMessages.reduce(0) { $0 + ($1.textContent?.count ?? 0) }
+            let systemPromptChars = chatMessages.first(where: { $0.role == "system" })?.textContent?.count ?? 0
+
             do {
+                let streamID = assistantMessage.id
+                let streamStartedAt = Date()
+                var firstTokenAt: Date?
+                var chunkCount = 0
+                var chunkBytes = 0
+
+                await MainActor.run {
+                    activeStreamID = streamID
+                    activeStreamScrollEvents = 0
+                    activeStreamUIUpdates = 0
+                    streamingContent = ""  // Reset streaming buffer
+                    perfLog("PERF_PREP messages_build_ms=\(messagesBuildMs) system_prompt_ms=\(systemPromptMs) system_prompt_chars=\(systemPromptChars) total_payload_chars=\(totalChars) message_count=\(chatMessages.count)")
+                    perfLog("PERF_STREAM_START id=\(streamID.uuidString) model=\(modelToUse.rawValue) prompt_chars=\(userContent.count)")
+                }
+
                 let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
+                var lastChunkTime = Date()
+                var slowChunks = 0
+                var maxChunkMs = 0
+                var contentBuffer = ""  // Local buffer for chunks - NO SwiftData updates during streaming!
+                var lastUIUpdateTime = Date()
+
                 for try await chunk in stream {
-                    await MainActor.run {
-                        assistantMessage.content += chunk
+                    let chunkReceivedAt = Date()
+                    let chunkIntervalMs = Int(chunkReceivedAt.timeIntervalSince(lastChunkTime) * 1000)
+                    maxChunkMs = max(maxChunkMs, chunkIntervalMs)
+
+                    if chunkIntervalMs > 500 {
+                        slowChunks += 1
+                        perfLog("PERF_SLOW_CHUNK chunk=\(chunkCount) interval_ms=\(chunkIntervalMs) bytes=\(chunk.utf8.count)")
+                    }
+
+                    lastChunkTime = chunkReceivedAt
+
+                    if firstTokenAt == nil {
+                        firstTokenAt = Date()
+                    }
+                    chunkCount += 1
+                    chunkBytes += chunk.utf8.count
+                    contentBuffer += chunk
+
+                    // Throttle UI updates to every 50ms instead of per-chunk
+                    // This dramatically reduces MainActor hops and SwiftUI re-renders
+                    let timeSinceLastUpdate = chunkReceivedAt.timeIntervalSince(lastUIUpdateTime)
+                    if timeSinceLastUpdate >= 0.05 {
+                        lastUIUpdateTime = chunkReceivedAt
+                        let bufferSnapshot = contentBuffer
+                        await MainActor.run {
+                            streamingContent = bufferSnapshot  // Update @State, NOT SwiftData
+                            if activeStreamID == streamID {
+                                activeStreamUIUpdates += 1
+                            }
+                        }
                     }
                 }
 
+                // Final update with complete content
+                let finalContent = contentBuffer
                 await MainActor.run {
+                    let totalMs = Int(Date().timeIntervalSince(streamStartedAt) * 1000)
+                    let firstTokenMs = firstTokenAt.map { Int($0.timeIntervalSince(streamStartedAt) * 1000) } ?? -1
+                    let uiUpdates = activeStreamID == streamID ? activeStreamUIUpdates : 0
+                    let scrollEvents = activeStreamID == streamID ? activeStreamScrollEvents : 0
+                    perfLog(
+                        "PERF_STREAM_END id=\(streamID.uuidString) total_ms=\(totalMs) first_token_ms=\(firstTokenMs) " +
+                        "chunks=\(chunkCount) chunk_bytes=\(chunkBytes) final_chars=\(finalContent.count) " +
+                        "ui_updates=\(uiUpdates) scroll_events=\(scrollEvents) slow_chunks=\(slowChunks) max_chunk_ms=\(maxChunkMs)"
+                    )
+
+                    // NOW update SwiftData - only once at the end!
+                    assistantMessage.content = finalContent
+                    streamingContent = ""
+
+                    if activeStreamID == streamID {
+                        activeStreamID = nil
+                        activeStreamScrollEvents = 0
+                        activeStreamUIUpdates = 0
+                    }
+
                     conversation.updatedAt = Date()
                     isLoading = false
                     currentStreamingMessage = nil
@@ -496,6 +654,14 @@ struct ChatView: View {
                 )
             } catch {
                 await MainActor.run {
+                    if let streamID = activeStreamID {
+                        perfLog("PERF_STREAM_ERROR id=\(streamID.uuidString) error=\(error.localizedDescription)")
+                    }
+
+                    activeStreamID = nil
+                    activeStreamScrollEvents = 0
+                    activeStreamUIUpdates = 0
+
                     // Remove the empty assistant message on error
                     if assistantMessage.content.isEmpty,
                        let index = conversation.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
@@ -508,6 +674,20 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    private var isPerfLoggingEnabled: Bool {
+        #if DEBUG
+        true
+        #else
+        ProcessInfo.processInfo.environment["OMNICHAT_PERF_LOGS"] == "1" ||
+        UserDefaults.standard.bool(forKey: "omnichat_perf_logs")
+        #endif
+    }
+
+    private func perfLog(_ message: String) {
+        guard isPerfLoggingEnabled else { return }
+        print(message)
     }
 
     // MARK: - RAG Background Processing

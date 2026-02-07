@@ -50,6 +50,8 @@ final class RAGService {
         modelContext: ModelContext,
         limit: Int = 5
     ) async throws -> [RAGResult] {
+        let startTime = Date()
+
         guard isConfigured else {
             logger.warning("RAG not configured - OpenAI API key missing")
             return []
@@ -61,10 +63,12 @@ final class RAGService {
         }
 
         // 1. Extract message data on MainActor (safe SwiftData access)
+        let extractStartTime = Date()
         let messageDataList = try extractMessageData(
             excludeConversation: excludeConversation,
             modelContext: modelContext
         )
+        let extractMs = Int(Date().timeIntervalSince(extractStartTime) * 1000)
 
         if messageDataList.isEmpty {
             logger.debug("No messages with embeddings found for RAG")
@@ -74,6 +78,7 @@ final class RAGService {
         logger.info("RAG: Found \(messageDataList.count) messages with embeddings to search")
 
         // 2. Generate query embedding (network call, can be off main thread)
+        let embeddingStartTime = Date()
         let queryEmbedding: [Double]
         do {
             queryEmbedding = try await embeddingService.generateEmbedding(for: trimmedQuery)
@@ -81,13 +86,21 @@ final class RAGService {
             logger.error("Failed to generate query embedding: \(error.localizedDescription)")
             throw error
         }
+        let embeddingMs = Int(Date().timeIntervalSince(embeddingStartTime) * 1000)
 
         // 3. Calculate similarities on background thread to avoid blocking UI
-        return await calculateSimilaritiesAsync(
+        let similarityStartTime = Date()
+        let results = await calculateSimilaritiesAsync(
             messageData: messageDataList,
             queryEmbedding: queryEmbedding,
             limit: limit
         )
+        let similarityMs = Int(Date().timeIntervalSince(similarityStartTime) * 1000)
+
+        let totalMs = Int(Date().timeIntervalSince(startTime) * 1000)
+        print("PERF_RAG total_ms=\(totalMs) extract_ms=\(extractMs) embedding_ms=\(embeddingMs) similarity_ms=\(similarityMs) messages_searched=\(messageDataList.count) results=\(results.count)")
+
+        return results
     }
 
     /// Extract message data from SwiftData on MainActor

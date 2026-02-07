@@ -98,7 +98,15 @@ struct UnifiedMessageWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: NonScrollingWebView, context: Context) {
-        webView.loadHTMLString(generateHTML(), baseURL: nil)
+        let startedAt = Date()
+        let html = generateHTML()
+        let prepMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+
+        if Self.isPerfLoggingEnabled {
+            print("PERF_MARKDOWN_PREP chars=\(content.count) html_chars=\(html.count) prep_ms=\(prepMs)")
+        }
+
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -113,6 +121,9 @@ struct UnifiedMessageWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            if UnifiedMessageWebView.isPerfLoggingEnabled {
+                print("PERF_MARKDOWN_DID_FINISH")
+            }
             updateHeight(webView)
         }
 
@@ -413,6 +424,15 @@ struct UnifiedMessageWebView: NSViewRepresentable {
         </body>
         </html>
         """
+    }
+
+    static var isPerfLoggingEnabled: Bool {
+        #if DEBUG
+        true
+        #else
+        ProcessInfo.processInfo.environment["OMNICHAT_PERF_LOGS"] == "1" ||
+        UserDefaults.standard.bool(forKey: "omnichat_perf_logs")
+        #endif
     }
 
     private func preprocessContent(_ text: String) -> String {

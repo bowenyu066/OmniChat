@@ -6,9 +6,16 @@ struct MessageView: View {
     @Environment(\.modelContext) private var modelContext
 
     let message: Message
+    var isStreaming: Bool = false
+    var streamingContent: String? = nil  // Override content during streaming (avoids SwiftData triggers)
     var onRetry: (() -> Void)?
     var onSwitchModel: ((AIModel) -> Void)?
     var onBranch: (() -> Void)?
+
+    /// Content to display - uses streaming buffer if available, otherwise message content
+    private var displayContent: String {
+        streamingContent ?? message.content
+    }
 
     @State private var showingSaveToMemory = false
     @State private var isSpeaking = false
@@ -65,15 +72,26 @@ struct MessageView: View {
                     .help("Copy to clipboard")
                 }
             } else {
-                // Assistant messages: markdown rendering
-                MarkdownView(content: message.content)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                // Assistant messages: use lightweight text while streaming to reduce CPU.
+                if isStreaming {
+                    Text(displayContent)
+                        .font(.body)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                } else {
+                    MarkdownView(content: displayContent)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                }
 
                 // Action buttons for assistant messages
-                if !message.content.isEmpty {
+                if !displayContent.isEmpty && !isStreaming {
                     MessageActionBar(
                         onCopy: copyToClipboard,
                         onAudio: toggleSpeech,
@@ -120,7 +138,7 @@ struct MessageView: View {
     private func copyToClipboard() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(message.content, forType: .string)
+        pasteboard.setString(displayContent, forType: .string)
     }
 
     private func toggleSpeech() {
