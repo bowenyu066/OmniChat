@@ -1,5 +1,5 @@
 <div align="center" style="font-size: 24px;">
-  <p>I know you are tired and sick of having to switch among ChatGPT, Gemini, and whatever apps,</p>
+  <!-- <p>I know you are tired and sick of having to switch among ChatGPT, Gemini, and whatever apps,</p>
   <p>just to find the best AI that fits your personality.</p>
   <p>I also know that you feel like sometimes you are slowly "kidnapped" by one of them, </p>
   <p>because they carry all your emotions, your memories, your histories, and your late-night teas.</p>
@@ -10,7 +10,7 @@
   <p>That's why we bring you <b>OmniChat</b>.</p>
   <p>It is designed to carry all your memories and allow smooth transitions among all the models you love.</p>
   <p>No more rushing around, no more crying alone. All of you are stored safely here.</p>
-  <p>Models are just guests, but <b><i>you are the real landlord</i></b>.</p>
+  <p>Models are just guests, but <b><i>you are the real landlord</i></b>.</p> -->
   <img src="https://github.com/bowenyu066/OmniChat/blob/main/OmniChat/Resources/new_icon-256.png" alt="OmniChat">
 </div>
 
