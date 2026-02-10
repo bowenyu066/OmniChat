@@ -13,5 +13,9 @@
 	<!-- Enable App Sandbox -->
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+
+	<!-- Allow microphone access for voice input -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>

@@ -57,6 +57,8 @@
 		A1000030 /* UpdateCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000030 /* UpdateCheckService.swift */; };
 		A1000031 /* UpdateBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000031 /* UpdateBannerView.swift */; };
 		A1000032 /* ReleaseNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000032 /* ReleaseNotesView.swift */; };
+		A1000033 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000033 /* TranscriptionService.swift */; };
+		A1000034 /* AudioRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000034 /* AudioRecorderButton.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -112,6 +114,8 @@
 		A2000030 /* UpdateCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateCheckService.swift; sourceTree = "<group>"; };
 		A2000031 /* UpdateBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateBannerView.swift; sourceTree = "<group>"; };
 		A2000032 /* ReleaseNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotesView.swift; sourceTree = "<group>"; };
+		A2000033 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
+		A2000034 /* AudioRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderButton.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -240,6 +244,7 @@
 				A200001B /* AttachmentDisplayView.swift */,
 				A2000031 /* UpdateBannerView.swift */,
 				A2000032 /* ReleaseNotesView.swift */,
+				A2000034 /* AudioRecorderButton.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -258,6 +263,7 @@
 				A200002C /* RAGService.swift */,
 				A200002E /* ChatGPTImportService.swift */,
 				A2000030 /* UpdateCheckService.swift */,
+				A2000033 /* TranscriptionService.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -413,6 +419,8 @@
 				A1000030 /* UpdateCheckService.swift in Sources */,
 				A1000031 /* UpdateBannerView.swift in Sources */,
 				A1000032 /* ReleaseNotesView.swift in Sources */,
+				A1000033 /* TranscriptionService.swift in Sources */,
+				A1000034 /* AudioRecorderButton.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -560,6 +568,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OmniChat;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OmniChat uses the microphone for voice-to-text input.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -591,6 +600,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = OmniChat;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OmniChat uses the microphone for voice-to-text input.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

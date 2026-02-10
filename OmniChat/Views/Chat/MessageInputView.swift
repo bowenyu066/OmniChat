@@ -54,6 +54,18 @@ struct MessageInputView: View {
                 .help("Add image or PDF (⌘⇧A)")
                 .keyboardShortcut("a", modifiers: [.command, .shift])
 
+                // Microphone button for voice input
+                AudioRecorderButton { transcribedText in
+                    // Append transcribed text to input (add space if needed)
+                    if text.isEmpty {
+                        text = transcribedText
+                    } else if text.hasSuffix(" ") || text.hasSuffix("\n") {
+                        text += transcribedText
+                    } else {
+                        text += " " + transcribedText
+                    }
+                }
+
                 // Custom text input - Now includes internal ScrollView logic
                 BareTextView(
                     text: $text,
