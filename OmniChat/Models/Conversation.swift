@@ -14,6 +14,10 @@ final class Conversation {
     var hasTitleBeenGenerated: Bool = false  // Track if title was already generated
     var memoryContextConfigData: Data?  // Persisted MemoryContextConfig
 
+    // Import deduplication: identifies source of imported conversations
+    // Format: "chatgpt:<createTime>" for ChatGPT imports
+    var importSourceId: String?
+
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     var messages: [Message]
 

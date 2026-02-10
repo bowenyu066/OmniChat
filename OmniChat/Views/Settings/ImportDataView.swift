@@ -176,13 +176,23 @@ struct ImportDataView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("• \(result.conversationsImported) conversations imported")
-                Text("• \(result.messagesImported) messages imported")
+                if result.conversationsImported > 0 {
+                    Text("• \(result.conversationsImported) conversations imported")
+                }
+                if result.conversationsUpdated > 0 {
+                    Text("• \(result.conversationsUpdated) conversations updated (images added)")
+                }
+                if result.messagesImported > 0 {
+                    Text("• \(result.messagesImported) messages imported")
+                }
+                if result.messagesUpdated > 0 {
+                    Text("• \(result.messagesUpdated) messages updated")
+                }
                 if result.imagesImported > 0 {
                     Text("• \(result.imagesImported) images imported")
                 }
                 if result.conversationsSkipped > 0 {
-                    Text("• \(result.conversationsSkipped) empty conversations skipped")
+                    Text("• \(result.conversationsSkipped) conversations skipped (duplicates or empty)")
                         .foregroundStyle(.secondary)
                 }
             }

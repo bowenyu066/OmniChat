@@ -34,6 +34,9 @@ final class Message {
     // Used to determine visibility when switching between branches
     var precedingMessageId: UUID?  // The message this is a direct follow-up to
 
+    // Import deduplication: stores original message ID from import source
+    var importMessageId: String?
+
     init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil, attachments: [Attachment] = []) {
         self.id = id
         self.role = role

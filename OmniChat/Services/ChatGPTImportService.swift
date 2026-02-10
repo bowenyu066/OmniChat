@@ -47,7 +47,9 @@ final class ChatGPTImportService {
 
     struct ImportResult {
         var conversationsImported: Int
+        var conversationsUpdated: Int = 0  // Existing conversations that were updated (e.g., images added)
         var messagesImported: Int
+        var messagesUpdated: Int = 0  // Existing messages that were updated
         var imagesImported: Int = 0
         var conversationsSkipped: Int
         var errors: [String]
@@ -105,6 +107,15 @@ final class ChatGPTImportService {
                 phase: .importing
             ))
 
+            let importSourceId = makeImportSourceId(for: chatGPTConvo)
+
+            // Check for existing conversation (deduplication)
+            if findExistingConversation(importSourceId: importSourceId, modelContext: modelContext) != nil {
+                result.conversationsSkipped += 1
+                logger.debug("Skipped duplicate: \(chatGPTConvo.title)")
+                continue
+            }
+
             do {
                 let (conversation, messages) = try createConversation(from: chatGPTConvo, modelContext: modelContext)
 
@@ -112,6 +123,8 @@ final class ChatGPTImportService {
                     result.conversationsSkipped += 1
                     logger.debug("Skipped empty conversation: \(chatGPTConvo.title)")
                 } else {
+                    // Set import source ID for future deduplication
+                    conversation.importSourceId = importSourceId
                     modelContext.insert(conversation)
                     result.conversationsImported += 1
                     result.messagesImported += messages.count
@@ -229,6 +242,31 @@ final class ChatGPTImportService {
                 phase: .importing
             ))
 
+            let importSourceId = makeImportSourceId(for: chatGPTConvo)
+
+            // Check for existing conversation (deduplication)
+            if let existingConvo = findExistingConversation(importSourceId: importSourceId, modelContext: modelContext) {
+                // Update existing conversation with images
+                let (messagesUpdated, imagesAdded) = updateConversationWithImages(
+                    existing: existingConvo,
+                    from: chatGPTConvo,
+                    imageIndex: imageIndex,
+                    modelContext: modelContext
+                )
+
+                if imagesAdded > 0 {
+                    result.conversationsUpdated += 1
+                    result.messagesUpdated += messagesUpdated
+                    result.imagesImported += imagesAdded
+                    logger.debug("Updated: \(chatGPTConvo.title) - added \(imagesAdded) images to \(messagesUpdated) messages")
+                } else {
+                    result.conversationsSkipped += 1
+                    logger.debug("Skipped duplicate: \(chatGPTConvo.title) (no new images)")
+                }
+                continue
+            }
+
+            // Create new conversation
             do {
                 let (conversation, messages) = try createConversationWithImages(
                     from: chatGPTConvo,
@@ -240,6 +278,8 @@ final class ChatGPTImportService {
                     result.conversationsSkipped += 1
                     logger.debug("Skipped empty conversation: \(chatGPTConvo.title)")
                 } else {
+                    // Set import source ID for future deduplication
+                    conversation.importSourceId = importSourceId
                     modelContext.insert(conversation)
                     result.conversationsImported += 1
                     result.messagesImported += messages.count
@@ -353,6 +393,84 @@ final class ChatGPTImportService {
         return try decoder.decode([ChatGPTConversation].self, from: data)
     }
 
+    // MARK: - Deduplication Helpers
+
+    /// Generate a unique import source ID for a ChatGPT conversation
+    private func makeImportSourceId(for chatGPTConvo: ChatGPTConversation) -> String {
+        return "chatgpt:\(chatGPTConvo.createTime)"
+    }
+
+    /// Find an existing conversation by import source ID
+    private func findExistingConversation(
+        importSourceId: String,
+        modelContext: ModelContext
+    ) -> Conversation? {
+        let descriptor = FetchDescriptor<Conversation>(
+            predicate: #Predicate { $0.importSourceId == importSourceId }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    /// Find an existing message within a conversation by import message ID
+    private func findExistingMessage(
+        importMessageId: String,
+        in conversation: Conversation
+    ) -> Message? {
+        return conversation.messages.first { $0.importMessageId == importMessageId }
+    }
+
+    /// Update an existing conversation with images from a re-import
+    /// Returns (messagesUpdated, imagesAdded)
+    private func updateConversationWithImages(
+        existing: Conversation,
+        from chatGPTConvo: ChatGPTConversation,
+        imageIndex: [String: URL],
+        modelContext: ModelContext
+    ) -> (Int, Int) {
+        let extractedMessages = extractMessagePath(from: chatGPTConvo.mapping)
+
+        var messagesUpdated = 0
+        var imagesAdded = 0
+
+        for extracted in extractedMessages {
+            // Find matching message by import ID
+            guard let existingMessage = findExistingMessage(importMessageId: extracted.id, in: existing) else {
+                continue
+            }
+
+            // Skip if no new images to add
+            guard !extracted.imageFileIds.isEmpty else { continue }
+
+            // Check which images are already attached
+            let existingFilenames = Set(existingMessage.attachments.map { $0.filename ?? "" })
+
+            var addedAny = false
+            for fileId in extracted.imageFileIds {
+                // Load the image
+                if let attachment = loadImageAttachment(fileId: fileId, from: imageIndex, modelContext: modelContext) {
+                    // Skip if already attached (by filename match)
+                    if existingFilenames.contains(attachment.filename ?? "") {
+                        continue
+                    }
+                    existingMessage.attachments.append(attachment)
+                    imagesAdded += 1
+                    addedAny = true
+                }
+            }
+
+            if addedAny {
+                messagesUpdated += 1
+            }
+        }
+
+        // Update the conversation's updatedAt if we added images
+        if imagesAdded > 0 {
+            existing.updatedAt = Date()
+        }
+
+        return (messagesUpdated, imagesAdded)
+    }
+
     // MARK: - Tree Traversal
 
     /// Extract linear message path from tree structure
@@ -451,6 +569,7 @@ final class ChatGPTImportService {
                 timestamp: timestamp,
                 modelUsed: extracted.role == "assistant" ? "ChatGPT (imported)" : nil
             )
+            message.importMessageId = extracted.id  // Store original ID for deduplication
             message.conversation = conversation
             messages.append(message)
         }
@@ -492,6 +611,7 @@ final class ChatGPTImportService {
                 timestamp: timestamp,
                 modelUsed: extracted.role == "assistant" ? "ChatGPT (imported)" : nil
             )
+            message.importMessageId = extracted.id  // Store original ID for deduplication
 
             // Load and attach images
             for fileId in extracted.imageFileIds {
