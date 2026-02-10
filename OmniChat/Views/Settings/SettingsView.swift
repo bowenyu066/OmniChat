@@ -301,17 +301,119 @@ struct AutoSaveAPIKeyRow: View {
 
 struct GeneralSettingsView: View {
     @AppStorage("default_model") private var defaultModel = "gpt-4o"
+    @ObservedObject private var updateService = UpdateCheckService.shared
+    @State private var autoCheckEnabled: Bool = UserDefaults.standard.autoCheckForUpdates
+    @State private var checkFrequency: String = UserDefaults.standard.updateCheckFrequency
 
     var body: some View {
         Form {
-            Picker("Default Model", selection: $defaultModel) {
-                ForEach(AIModel.allCases) { model in
-                    Text(model.displayName).tag(model.rawValue)
+            Section("Model") {
+                Picker("Default Model", selection: $defaultModel) {
+                    ForEach(AIModel.allCases) { model in
+                        Text(model.displayName).tag(model.rawValue)
+                    }
                 }
             }
+
+            Section("Updates") {
+                Toggle("Automatically check for updates", isOn: $autoCheckEnabled)
+                    .onChange(of: autoCheckEnabled) { _, newValue in
+                        UserDefaults.standard.autoCheckForUpdates = newValue
+                    }
+
+                Picker("Check frequency", selection: $checkFrequency) {
+                    Text("On startup").tag("onStartup")
+                    Text("Daily").tag("daily")
+                    Text("Weekly").tag("weekly")
+                }
+                .pickerStyle(.radioGroup)
+                .disabled(!autoCheckEnabled)
+                .onChange(of: checkFrequency) { _, newValue in
+                    UserDefaults.standard.updateCheckFrequency = newValue
+                }
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let lastCheck = updateService.lastCheckDate {
+                            Text("Last checked: \(formattedDate(lastCheck))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("Never checked")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+
+                        if let update = updateService.availableUpdate {
+                            Text("Version \(update.version) is available")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button {
+                        Task {
+                            await updateService.checkForUpdates(silent: false)
+                        }
+                    } label: {
+                        if updateService.isChecking {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Text("Check Now")
+                        }
+                    }
+                    .disabled(updateService.isChecking)
+                }
+
+                if let update = updateService.availableUpdate {
+                    HStack {
+                        Text("Version \(update.version) available")
+                            .foregroundColor(.green)
+                        Spacer()
+                        Button("Download") {
+                            NSWorkspace.shared.open(update.downloadURL)
+                        }
+                    }
+                }
+            }
+
+            #if DEBUG
+            Section("Debug / Testing") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Update Banner Testing")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    HStack {
+                        Button("Show Mock Update") {
+                            updateService.showMockUpdate()
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Clear Update") {
+                            updateService.clearUpdate()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    Text("Use these buttons to test the update banner without needing a real GitHub release.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            #endif
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 

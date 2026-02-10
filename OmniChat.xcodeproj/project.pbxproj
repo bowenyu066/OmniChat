@@ -54,6 +54,9 @@
 		A100002D /* ChatGPTExportModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002D /* ChatGPTExportModels.swift */; };
 		A100002E /* ChatGPTImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002E /* ChatGPTImportService.swift */; };
 		A100002F /* ImportDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002F /* ImportDataView.swift */; };
+		A1000030 /* UpdateCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000030 /* UpdateCheckService.swift */; };
+		A1000031 /* UpdateBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000031 /* UpdateBannerView.swift */; };
+		A1000032 /* ReleaseNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000032 /* ReleaseNotesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -106,6 +109,9 @@
 		A200002D /* ChatGPTExportModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTExportModels.swift; sourceTree = "<group>"; };
 		A200002E /* ChatGPTImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTImportService.swift; sourceTree = "<group>"; };
 		A200002F /* ImportDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportDataView.swift; sourceTree = "<group>"; };
+		A2000030 /* UpdateCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateCheckService.swift; sourceTree = "<group>"; };
+		A2000031 /* UpdateBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateBannerView.swift; sourceTree = "<group>"; };
+		A2000032 /* ReleaseNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -232,6 +238,8 @@
 				A2000017 /* MarkdownView.swift */,
 				A200001A /* AttachmentPreviewView.swift */,
 				A200001B /* AttachmentDisplayView.swift */,
+				A2000031 /* UpdateBannerView.swift */,
+				A2000032 /* ReleaseNotesView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -249,6 +257,7 @@
 				A200002B /* SummaryService.swift */,
 				A200002C /* RAGService.swift */,
 				A200002E /* ChatGPTImportService.swift */,
+				A2000030 /* UpdateCheckService.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -401,6 +410,9 @@
 				A100002D /* ChatGPTExportModels.swift in Sources */,
 				A100002E /* ChatGPTImportService.swift in Sources */,
 				A100002F /* ImportDataView.swift in Sources */,
+				A1000030 /* UpdateCheckService.swift in Sources */,
+				A1000031 /* UpdateBannerView.swift in Sources */,
+				A1000032 /* ReleaseNotesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -552,7 +564,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.3.2-beta;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omnichat.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -583,7 +595,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.3.2-beta;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omnichat.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

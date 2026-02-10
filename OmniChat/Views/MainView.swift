@@ -10,9 +10,16 @@ struct MainView: View {
     @State private var selectedModel: AIModel = .gpt5_2
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @FocusState private var isInputFocused: Bool
+    @ObservedObject private var updateService = UpdateCheckService.shared
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        VStack(spacing: 0) {
+            // Update banner at top
+            if let update = updateService.availableUpdate {
+                UpdateBannerView(update: update)
+            }
+
+            NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(
                 conversations: conversations,
                 selectedConversation: $selectedConversation,
@@ -38,8 +45,9 @@ struct MainView: View {
                 }
             }
             .padding(.top, 0)
+            }
+            .navigationSplitViewStyle(.balanced)
         }
-        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 900, minHeight: 600)
         .onAppear {
             // Create default memories if needed (first launch)

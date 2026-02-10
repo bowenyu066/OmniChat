@@ -96,6 +96,7 @@ private extension LAContext {
 @main
 struct OmniChatApp: App {
     @StateObject private var authManager = AuthManager()
+    @StateObject private var updateService = UpdateCheckService.shared
 
     private static let keychainMigrationKey = "keychain_migrated_v2"
 
@@ -132,6 +133,9 @@ struct OmniChatApp: App {
 
                         // Preload all API keys into cache
                         KeychainService.shared.preloadKeys()
+
+                        // Check for updates if enabled
+                        await performStartupUpdateCheck()
                     }
                 }
         }
@@ -265,6 +269,32 @@ struct OmniChatApp: App {
         KeychainService.shared.migrateKeysToNewAccessSettings()
 
         UserDefaults.standard.set(true, forKey: Self.keychainMigrationKey)
+    }
+
+    /// Check for updates on app startup based on user preferences
+    private func performStartupUpdateCheck() async {
+        let autoCheck = UserDefaults.standard.autoCheckForUpdates
+        guard autoCheck else { return }
+
+        let frequency = UserDefaults.standard.updateCheckFrequency
+        let lastCheck = UserDefaults.standard.lastUpdateCheckDate
+
+        let shouldCheck: Bool = {
+            switch frequency {
+            case "onStartup":
+                return true
+            case "daily":
+                return lastCheck == nil || lastCheck!.timeIntervalSinceNow < -86400
+            case "weekly":
+                return lastCheck == nil || lastCheck!.timeIntervalSinceNow < -604800
+            default:
+                return true
+            }
+        }()
+
+        if shouldCheck {
+            await updateService.checkForUpdates(silent: true)
+        }
     }
 }
 
