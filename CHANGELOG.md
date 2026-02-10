@@ -2,6 +2,35 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.3.2-beta (2026-02-09) - Auto-Update Notifications
+
+**Added:**
+- **Auto-update notification system**: Get notified when new versions are available
+- Non-intrusive update banner at top of main window
+- Release notes viewer with markdown rendering
+- Settings integration for update preferences (auto-check on/off, frequency)
+- Semantic version parsing with prerelease support (e.g., v0.3.1-beta)
+
+**Features:**
+- Checks GitHub Releases API for new versions
+- Configurable check frequency: On startup, Daily, or Weekly
+- "View Release Notes" shows full changelog in a modal
+- "Download" button opens browser to GitHub release page
+- Temporary dismiss (hides until next launch)
+- Permanent dismiss (never show this version again)
+
+**Technical:**
+- New `UpdateCheckService.swift`: Core service for GitHub API integration
+- New `UpdateBannerView.swift`: Banner UI component with animations
+- New `ReleaseNotesView.swift`: Modal sheet for changelog display
+- `SemanticVersion` struct for proper version comparison
+- UserDefaults integration for preferences and dismissed versions
+- Rate limit handling for GitHub API (60 req/hour unauthenticated)
+
+**Note:** Users on v0.3.1-beta or earlier will need to manually update to v0.3.2-beta. After that, all future updates will show automatic notifications.
+
+---
+
 ## v0.3.1-beta (2026-02-07) - Performance Fix
 
 **Fixed:**
