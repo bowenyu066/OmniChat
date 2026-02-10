@@ -25,6 +25,11 @@ final class Message {
     var summary: String?
     var embeddedAt: Date?
 
+    // Branching support: siblings are alternate responses at the same position
+    var siblingGroupId: UUID?    // Groups sibling messages together (nil = no siblings)
+    var siblingIndex: Int = 0    // Position within sibling group (0, 1, 2...)
+    var isActive: Bool = true    // Is this the currently displayed sibling?
+
     init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil, attachments: [Attachment] = []) {
         self.id = id
         self.role = role
@@ -64,5 +69,10 @@ final class Message {
     /// Check if this message has been embedded for RAG
     var hasEmbedding: Bool {
         embeddingData != nil && embeddedAt != nil
+    }
+
+    /// Check if this message has any siblings (alternate responses)
+    var hasSiblings: Bool {
+        siblingGroupId != nil
     }
 }

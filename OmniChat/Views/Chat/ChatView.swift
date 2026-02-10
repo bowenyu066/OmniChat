@@ -98,13 +98,16 @@ struct ChatView: View {
         LazyVStack(spacing: 16) {
             ForEach(sortedMessagesCache) { message in
                 let isThisStreaming = currentStreamingMessage?.id == message.id
+                let siblings = getSiblings(for: message)
                 MessageView(
                     message: message,
                     isStreaming: isThisStreaming,
                     streamingContent: isThisStreaming ? streamingContent : nil,
+                    siblings: siblings,
                     onRetry: message.role == .assistant ? { retryMessage(message) } : nil,
                     onSwitchModel: message.role == .assistant ? { newModel in switchModel(for: message, to: newModel) } : nil,
-                    onBranch: message.role == .assistant ? { branchFromMessage(message) } : nil
+                    onBranch: message.role == .assistant ? { branchFromMessage(message) } : nil,
+                    onSwitchSibling: message.role == .assistant && siblings.count > 1 ? { sibling in switchToSibling(sibling) } : nil
                 )
                 .id(message.id)
             }
@@ -202,7 +205,10 @@ struct ChatView: View {
     }
 
     private func refreshSortedMessages() {
-        sortedMessagesCache = conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })
+        // Filter to only show active messages (hides inactive sibling branches)
+        sortedMessagesCache = conversation.messages
+            .filter { $0.isActive }
+            .sorted(by: { $0.timestamp < $1.timestamp })
     }
 
     private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") async -> String {
@@ -326,24 +332,86 @@ struct ChatView: View {
     private func retryMessage(_ message: Message) {
         guard message.role == .assistant else { return }
 
-        // Find the user message that triggered this response
-        let sortedMessages = conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })
-        guard let messageIndex = sortedMessages.firstIndex(where: { $0.id == message.id }),
-              messageIndex > 0 else { return }
-
-        // Clear the assistant message content and regenerate
-        message.content = ""
-        regenerateResponse(for: message)
+        // Create a sibling message instead of overwriting
+        let modelToUse = AIModel(rawValue: message.modelUsed ?? selectedModel.rawValue) ?? selectedModel
+        createSiblingAndRegenerate(for: message, withModel: modelToUse)
     }
 
     private func switchModel(for message: Message, to newModel: AIModel) {
         guard message.role == .assistant else { return }
 
-        // Update the model and regenerate
-        message.content = ""
-        message.modelUsed = newModel.rawValue
+        // Update the selected model
         selectedModel = newModel
-        regenerateResponse(for: message)
+
+        // Create a sibling message with the new model
+        createSiblingAndRegenerate(for: message, withModel: newModel)
+    }
+
+    /// Creates a new sibling message and regenerates the response
+    private func createSiblingAndRegenerate(for originalMessage: Message, withModel model: AIModel) {
+        // Set up sibling group if not already set
+        let groupId = originalMessage.siblingGroupId ?? originalMessage.id
+
+        // If this is the first sibling creation, update the original message
+        if originalMessage.siblingGroupId == nil {
+            originalMessage.siblingGroupId = groupId
+            originalMessage.siblingIndex = 0
+        }
+
+        // Find the highest sibling index in this group
+        let siblings = conversation.messages.filter { $0.siblingGroupId == groupId }
+        let maxIndex = siblings.map { $0.siblingIndex }.max() ?? 0
+
+        // Mark the original message as inactive
+        originalMessage.isActive = false
+
+        // Create a new sibling message
+        let newMessage = Message(
+            role: .assistant,
+            content: "",
+            timestamp: originalMessage.timestamp, // Keep same timestamp for ordering
+            modelUsed: model.rawValue
+        )
+        newMessage.siblingGroupId = groupId
+        newMessage.siblingIndex = maxIndex + 1
+        newMessage.isActive = true
+
+        // Insert into context and conversation
+        modelContext.insert(newMessage)
+        newMessage.conversation = conversation
+        conversation.messages.append(newMessage)
+
+        // Refresh the display
+        refreshSortedMessages()
+
+        // Regenerate the response
+        regenerateResponse(for: newMessage)
+    }
+
+    /// Get all siblings for a message (including itself)
+    func getSiblings(for message: Message) -> [Message] {
+        guard let groupId = message.siblingGroupId else {
+            return [message]
+        }
+        return conversation.messages
+            .filter { $0.siblingGroupId == groupId }
+            .sorted { $0.siblingIndex < $1.siblingIndex }
+    }
+
+    /// Switch to a different sibling message
+    func switchToSibling(_ targetMessage: Message) {
+        guard let groupId = targetMessage.siblingGroupId else { return }
+
+        // Deactivate all siblings in the group
+        for sibling in conversation.messages where sibling.siblingGroupId == groupId {
+            sibling.isActive = false
+        }
+
+        // Activate the target message
+        targetMessage.isActive = true
+
+        // Refresh the display
+        refreshSortedMessages()
     }
 
     private func regenerateResponse(for assistantMessage: Message) {

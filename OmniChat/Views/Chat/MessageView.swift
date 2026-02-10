@@ -8,9 +8,11 @@ struct MessageView: View {
     let message: Message
     var isStreaming: Bool = false
     var streamingContent: String? = nil  // Override content during streaming (avoids SwiftData triggers)
+    var siblings: [Message] = []  // All sibling messages (including this one)
     var onRetry: (() -> Void)?
     var onSwitchModel: ((AIModel) -> Void)?
     var onBranch: (() -> Void)?
+    var onSwitchSibling: ((Message) -> Void)?
 
     /// Content to display - uses streaming buffer if available, otherwise message content
     private var displayContent: String {
@@ -27,13 +29,22 @@ struct MessageView: View {
 
     var body: some View {
         VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
-            // Header: timestamp for user, model name + timestamp for assistant
+            // Header: timestamp for user, model name + timestamp + sibling nav for assistant
             HStack(spacing: 6) {
                 if !isUser {
                     Text(modelDisplayName)
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
+
+                    // Sibling navigation (only show if there are multiple siblings)
+                    if siblings.count > 1 {
+                        SiblingNavigator(
+                            currentMessage: message,
+                            siblings: siblings,
+                            onSwitch: onSwitchSibling
+                        )
+                    }
                 }
 
                 Text(message.timestamp, style: .time)
@@ -307,6 +318,66 @@ private class SpeechDelegate: NSObject, NSSpeechSynthesizerDelegate {
 
     func speechSynthesizer(_ sender: NSSpeechSynthesizer, didFinishSpeaking finishedSpeaking: Bool) {
         onFinish()
+    }
+}
+
+// MARK: - Sibling Navigator
+
+struct SiblingNavigator: View {
+    let currentMessage: Message
+    let siblings: [Message]
+    var onSwitch: ((Message) -> Void)?
+
+    private var currentIndex: Int {
+        siblings.firstIndex(where: { $0.id == currentMessage.id }) ?? 0
+    }
+
+    private var canGoBack: Bool {
+        currentIndex > 0
+    }
+
+    private var canGoForward: Bool {
+        currentIndex < siblings.count - 1
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button(action: goToPrevious) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(canGoBack ? .secondary : .secondary.opacity(0.3))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoBack)
+
+            Text("\(currentIndex + 1)/\(siblings.count)")
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            Button(action: goToNext) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(canGoForward ? .secondary : .secondary.opacity(0.3))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoForward)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(4)
+    }
+
+    private func goToPrevious() {
+        guard canGoBack else { return }
+        onSwitch?(siblings[currentIndex - 1])
+    }
+
+    private func goToNext() {
+        guard canGoForward else { return }
+        onSwitch?(siblings[currentIndex + 1])
     }
 }
 
