@@ -30,6 +30,10 @@ final class Message {
     var siblingIndex: Int = 0    // Position within sibling group (0, 1, 2...)
     var isActive: Bool = true    // Is this the currently displayed sibling?
 
+    // Thread continuity: tracks which message this directly follows
+    // Used to determine visibility when switching between branches
+    var precedingMessageId: UUID?  // The message this is a direct follow-up to
+
     init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil, attachments: [Attachment] = []) {
         self.id = id
         self.role = role

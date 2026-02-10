@@ -205,10 +205,42 @@ struct ChatView: View {
     }
 
     private func refreshSortedMessages() {
-        // Filter to only show active messages (hides inactive sibling branches)
-        sortedMessagesCache = conversation.messages
-            .filter { $0.isActive }
-            .sorted(by: { $0.timestamp < $1.timestamp })
+        // Build the visible message chain by following the active path
+        // A message is visible if:
+        // 1. It has no precedingMessageId (root message), OR
+        // 2. Its precedingMessageId is in the visible set
+        // AND it's active (for siblings, only show the active one)
+
+        let allMessages = conversation.messages
+        var visibleIds = Set<UUID>()
+        var result: [Message] = []
+
+        // Sort by timestamp first
+        let sorted = allMessages.sorted { $0.timestamp < $1.timestamp }
+
+        for message in sorted {
+            // Skip inactive siblings
+            guard message.isActive else { continue }
+
+            // Check if this message should be visible
+            let shouldShow: Bool
+            if message.precedingMessageId == nil {
+                // Root message (first user message) - always show
+                shouldShow = true
+            } else if let precedingId = message.precedingMessageId {
+                // Only show if the preceding message is visible
+                shouldShow = visibleIds.contains(precedingId)
+            } else {
+                shouldShow = false
+            }
+
+            if shouldShow {
+                visibleIds.insert(message.id)
+                result.append(message)
+            }
+        }
+
+        sortedMessagesCache = result
     }
 
     private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") async -> String {
@@ -375,6 +407,8 @@ struct ChatView: View {
         newMessage.siblingGroupId = groupId
         newMessage.siblingIndex = maxIndex + 1
         newMessage.isActive = true
+        // Sibling follows the same message as the original
+        newMessage.precedingMessageId = originalMessage.precedingMessageId
 
         // Insert into context and conversation
         modelContext.insert(newMessage)
@@ -414,6 +448,30 @@ struct ChatView: View {
         refreshSortedMessages()
     }
 
+    /// Build the visible message chain leading up to (but not including) a target message
+    /// This respects the branch structure by following precedingMessageId links
+    private func buildVisibleContextUpTo(_ targetMessage: Message) -> [Message] {
+        // We need to find all messages that lead to the target message's precedingMessageId
+        guard let targetPrecedingId = targetMessage.precedingMessageId else {
+            // Target has no preceding message - return empty context
+            return []
+        }
+
+        // Build backwards from the preceding message
+        var result: [Message] = []
+        var currentId: UUID? = targetPrecedingId
+
+        while let id = currentId {
+            guard let message = conversation.messages.first(where: { $0.id == id }) else {
+                break
+            }
+            result.insert(message, at: 0)
+            currentId = message.precedingMessageId
+        }
+
+        return result
+    }
+
     private func regenerateResponse(for assistantMessage: Message) {
         isLoading = true
         currentStreamingMessage = assistantMessage
@@ -429,20 +487,14 @@ struct ChatView: View {
             return
         }
 
-        // Prepare messages up to (but not including) this assistant message
-        let sortedMessages = conversation.messages.sorted(by: { $0.timestamp < $1.timestamp })
-        guard let assistantIndex = sortedMessages.firstIndex(where: { $0.id == assistantMessage.id }) else {
-            isLoading = false
-            return
-        }
+        // Build the visible message chain up to (but not including) this assistant message
+        // This ensures we use the correct branch context
+        let visibleContext = buildVisibleContextUpTo(assistantMessage)
 
-        var chatMessages = sortedMessages[0..<assistantIndex]
-            .map { ChatMessage(from: $0) }
+        var chatMessages = visibleContext.map { ChatMessage(from: $0) }
 
-        // Find the user message that triggered this response
-        let userMessage = sortedMessages[0..<assistantIndex]
-            .reversed()
-            .first(where: { $0.role == .user })
+        // Find the user message that triggered this response (should be the last in context)
+        let userMessage = visibleContext.last(where: { $0.role == .user })
         let userPrompt = userMessage?.content ?? ""
 
         Task {
@@ -547,8 +599,14 @@ struct ChatView: View {
         let hasAttachments = !pendingAttachments.isEmpty
         guard hasText || hasAttachments else { return }
 
+        // Find the last visible message to set as precedingMessageId
+        let lastVisibleMessage = sortedMessagesCache.last
+
         // Create user message first (without attachments)
         let userMessage = Message(role: .user, content: inputText)
+
+        // Set the preceding message (the last assistant message in the visible chain)
+        userMessage.precedingMessageId = lastVisibleMessage?.id
 
         // Insert message into context first so it becomes a managed object
         modelContext.insert(userMessage)
@@ -591,6 +649,9 @@ struct ChatView: View {
             modelUsed: selectedModel.rawValue
         )
 
+        // Set the preceding message (the user message this is responding to)
+        assistantMessage.precedingMessageId = userMessage.id
+
         // Insert into context first
         modelContext.insert(assistantMessage)
 
@@ -600,16 +661,23 @@ struct ChatView: View {
         conversation.messages.append(assistantMessage)
         currentStreamingMessage = assistantMessage
 
+        // Refresh to include the new messages
+        refreshSortedMessages()
+
         // Capture model for async use
         let modelToUse = selectedModel
+
+        // Capture the visible context before starting async work
+        // This is the sortedMessagesCache which already respects branch visibility
+        let visibleContext = sortedMessagesCache
 
         Task {
             let taskStartedAt = Date()
 
-            // Prepare messages for API (inside Task to use async getSystemPrompt)
-            var chatMessages = conversation.messages
-                .sorted(by: { $0.timestamp < $1.timestamp })
-                .filter { $0.id != assistantMessage.id } // Exclude the empty assistant message we just created
+            // Prepare messages for API using the visible context (respects branches)
+            // The visibleContext already includes the new user message since we refreshed
+            var chatMessages = visibleContext
+                .filter { $0.id != assistantMessage.id } // Exclude the empty assistant message
                 .map { ChatMessage(from: $0) }
 
             let messagesBuiltAt = Date()
