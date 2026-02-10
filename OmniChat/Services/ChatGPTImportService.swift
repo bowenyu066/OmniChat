@@ -108,9 +108,10 @@ final class ChatGPTImportService {
             ))
 
             let importSourceId = makeImportSourceId(for: chatGPTConvo)
+            let createdAt = Date(timeIntervalSince1970: chatGPTConvo.createTime)
 
             // Check for existing conversation (deduplication)
-            if findExistingConversation(importSourceId: importSourceId, modelContext: modelContext) != nil {
+            if findExistingConversation(importSourceId: importSourceId, title: chatGPTConvo.title, createdAt: createdAt, modelContext: modelContext) != nil {
                 result.conversationsSkipped += 1
                 logger.debug("Skipped duplicate: \(chatGPTConvo.title)")
                 continue
@@ -243,9 +244,10 @@ final class ChatGPTImportService {
             ))
 
             let importSourceId = makeImportSourceId(for: chatGPTConvo)
+            let createdAt = Date(timeIntervalSince1970: chatGPTConvo.createTime)
 
             // Check for existing conversation (deduplication)
-            if let existingConvo = findExistingConversation(importSourceId: importSourceId, modelContext: modelContext) {
+            if let existingConvo = findExistingConversation(importSourceId: importSourceId, title: chatGPTConvo.title, createdAt: createdAt, modelContext: modelContext) {
                 // Update existing conversation with images
                 let (messagesUpdated, imagesAdded) = updateConversationWithImages(
                     existing: existingConvo,
@@ -400,15 +402,41 @@ final class ChatGPTImportService {
         return "chatgpt:\(chatGPTConvo.createTime)"
     }
 
-    /// Find an existing conversation by import source ID
+    /// Find an existing conversation by import source ID or by title + creation time (fallback for old imports)
     private func findExistingConversation(
         importSourceId: String,
+        title: String,
+        createdAt: Date,
         modelContext: ModelContext
     ) -> Conversation? {
+        // First try by importSourceId (for conversations imported with new system)
         let descriptor = FetchDescriptor<Conversation>(
             predicate: #Predicate { $0.importSourceId == importSourceId }
         )
-        return try? modelContext.fetch(descriptor).first
+        if let found = try? modelContext.fetch(descriptor).first {
+            return found
+        }
+
+        // Fallback: match by title and creation time (for old imports without importSourceId)
+        // Allow 1 second tolerance for timestamp comparison
+        let toleranceSeconds: TimeInterval = 1.0
+        let minTime = createdAt.addingTimeInterval(-toleranceSeconds)
+        let maxTime = createdAt.addingTimeInterval(toleranceSeconds)
+
+        let fallbackDescriptor = FetchDescriptor<Conversation>(
+            predicate: #Predicate { conv in
+                conv.title == title &&
+                conv.createdAt >= minTime &&
+                conv.createdAt <= maxTime
+            }
+        )
+        if let found = try? modelContext.fetch(fallbackDescriptor).first {
+            // Update the old conversation with importSourceId for future deduplication
+            found.importSourceId = importSourceId
+            return found
+        }
+
+        return nil
     }
 
     /// Find an existing message within a conversation by import message ID
