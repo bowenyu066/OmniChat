@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import os.log
+import Compression
 
 private let logger = Logger(subsystem: "com.omnichat.app", category: "ChatGPTImport")
 
@@ -11,6 +12,9 @@ final class ChatGPTImportService {
     static let shared = ChatGPTImportService()
 
     private init() {}
+
+    /// Temporary directory for ZIP extraction
+    private var extractedZipDir: URL?
 
     // Background embedding task tracking
     private var backgroundEmbeddingTask: Task<Void, Never>?
@@ -44,6 +48,7 @@ final class ChatGPTImportService {
     struct ImportResult {
         var conversationsImported: Int
         var messagesImported: Int
+        var imagesImported: Int = 0
         var conversationsSkipped: Int
         var errors: [String]
     }
@@ -152,6 +157,194 @@ final class ChatGPTImportService {
         return result
     }
 
+    // MARK: - ZIP Import
+
+    /// Import conversations from a ChatGPT export ZIP file (includes images)
+    @MainActor
+    func importFromZip(
+        _ url: URL,
+        modelContext: ModelContext,
+        generateEmbeddings: Bool,
+        progressHandler: @escaping (ImportProgress) -> Void
+    ) async throws -> ImportResult {
+        var result = ImportResult(
+            conversationsImported: 0,
+            messagesImported: 0,
+            conversationsSkipped: 0,
+            errors: []
+        )
+
+        // Phase 1: Extract ZIP
+        progressHandler(ImportProgress(
+            totalConversations: 0,
+            importedConversations: 0,
+            currentTitle: "Extracting ZIP...",
+            phase: .parsing
+        ))
+
+        let extractedDir = try extractZip(url)
+        self.extractedZipDir = extractedDir
+        defer {
+            // Cleanup extracted directory
+            try? FileManager.default.removeItem(at: extractedDir)
+            self.extractedZipDir = nil
+        }
+
+        // Find conversations.json
+        let conversationsJsonURL = extractedDir.appendingPathComponent("conversations.json")
+        guard FileManager.default.fileExists(atPath: conversationsJsonURL.path) else {
+            throw ImportError.invalidFormat
+        }
+
+        // Phase 2: Parse JSON
+        progressHandler(ImportProgress(
+            totalConversations: 0,
+            importedConversations: 0,
+            currentTitle: "",
+            phase: .parsing
+        ))
+
+        let chatGPTConversations: [ChatGPTConversation]
+        do {
+            chatGPTConversations = try parseConversationsJSON(conversationsJsonURL)
+            logger.info("Parsed \(chatGPTConversations.count) conversations from ZIP")
+        } catch {
+            logger.error("Failed to parse JSON: \(error.localizedDescription)")
+            throw ImportError.parsingFailed(error.localizedDescription)
+        }
+
+        // Build image file index from extracted directory
+        let imageIndex = buildImageFileIndex(in: extractedDir)
+        logger.info("Found \(imageIndex.count) image files in ZIP")
+
+        // Phase 3: Import conversations
+        let totalCount = chatGPTConversations.count
+        var importedMessages: [Message] = []
+
+        for (index, chatGPTConvo) in chatGPTConversations.enumerated() {
+            progressHandler(ImportProgress(
+                totalConversations: totalCount,
+                importedConversations: index,
+                currentTitle: chatGPTConvo.title,
+                phase: .importing
+            ))
+
+            do {
+                let (conversation, messages) = try createConversationWithImages(
+                    from: chatGPTConvo,
+                    imageIndex: imageIndex,
+                    modelContext: modelContext
+                )
+
+                if messages.isEmpty {
+                    result.conversationsSkipped += 1
+                    logger.debug("Skipped empty conversation: \(chatGPTConvo.title)")
+                } else {
+                    modelContext.insert(conversation)
+                    result.conversationsImported += 1
+                    result.messagesImported += messages.count
+                    // Count images from attachments
+                    let imageCount = messages.reduce(0) { $0 + $1.attachments.count }
+                    result.imagesImported += imageCount
+                    importedMessages.append(contentsOf: messages)
+                    logger.debug("Imported: \(chatGPTConvo.title) with \(messages.count) messages, \(imageCount) images")
+                }
+            } catch {
+                result.errors.append("Failed to import '\(chatGPTConvo.title)': \(error.localizedDescription)")
+                logger.warning("Failed to import conversation: \(error.localizedDescription)")
+            }
+
+            // Save in batches to avoid memory pressure
+            if index % 50 == 0 && index > 0 {
+                try? modelContext.save()
+            }
+        }
+
+        // Final save
+        try modelContext.save()
+
+        // Phase 4: Queue background embedding generation (optional)
+        if generateEmbeddings && !importedMessages.isEmpty {
+            let messageIDs = importedMessages.filter { $0.role == .assistant && !$0.content.isEmpty }.map { $0.id }
+            await startBackgroundEmbedding(messageIDs: messageIDs, modelContainer: modelContext.container)
+        }
+
+        progressHandler(ImportProgress(
+            totalConversations: totalCount,
+            importedConversations: totalCount,
+            currentTitle: "",
+            phase: .complete
+        ))
+
+        logger.info("ZIP Import complete: \(result.conversationsImported) conversations, \(result.messagesImported) messages, \(result.imagesImported) images")
+        return result
+    }
+
+    // MARK: - ZIP Extraction
+
+    /// Extract ZIP file to temporary directory using unzip command
+    private func extractZip(_ zipURL: URL) throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("chatgpt_import_\(UUID().uuidString)")
+
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        // Use unzip command for extraction
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-q", zipURL.path, "-d", tempDir.path]
+
+        let pipe = Pipe()
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        if process.terminationStatus != 0 {
+            let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
+            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            throw ImportError.parsingFailed("Failed to extract ZIP: \(errorMessage)")
+        }
+
+        return tempDir
+    }
+
+    /// Build an index of all image files in the extracted directory
+    /// Maps file IDs (like "file-AbCdEf123456") to their file URLs
+    private func buildImageFileIndex(in directory: URL) -> [String: URL] {
+        var index: [String: URL] = [:]
+
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return index
+        }
+
+        let imageExtensions = Set(["png", "jpg", "jpeg", "gif", "webp"])
+
+        for case let fileURL as URL in enumerator {
+            let ext = fileURL.pathExtension.lowercased()
+            guard imageExtensions.contains(ext) else { continue }
+
+            // The filename might be the file ID directly, or contain it
+            let filename = fileURL.deletingPathExtension().lastPathComponent
+
+            // Try different patterns for file ID extraction
+            // Pattern 1: filename is the file ID (e.g., "file-AbCdEf123456.png")
+            if filename.hasPrefix("file-") {
+                index[filename] = fileURL
+            }
+
+            // Pattern 2: Just use the full filename as key
+            index[fileURL.lastPathComponent] = fileURL
+        }
+
+        return index
+    }
+
     // MARK: - JSON Parsing
 
     private func parseConversationsJSON(_ url: URL) throws -> [ChatGPTConversation] {
@@ -188,18 +381,32 @@ final class ChatGPTImportService {
 
                 // Skip hidden messages and system/tool messages
                 if !isHidden && (role == "user" || role == "assistant") {
-                    // Extract text content from parts
-                    let textContent = message.content.parts?
-                        .compactMap { $0.stringValue }
-                        .joined(separator: "\n") ?? ""
+                    // Extract text content and image file IDs from parts
+                    var textParts: [String] = []
+                    var imageFileIds: [String] = []
 
-                    if !textContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        messages.append(ExtractedChatGPTMessage(
+                    if let parts = message.content.parts {
+                        for part in parts {
+                            if let text = part.stringValue {
+                                textParts.append(text)
+                            } else if let imagePart = part.imagePart, let fileId = imagePart.fileId {
+                                imageFileIds.append(fileId)
+                            }
+                        }
+                    }
+
+                    let textContent = textParts.joined(separator: "\n")
+
+                    // Include message if it has text OR images
+                    if !textContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !imageFileIds.isEmpty {
+                        var extracted = ExtractedChatGPTMessage(
                             id: message.id,
                             role: role,
                             content: textContent,
                             createTime: message.createTime
-                        ))
+                        )
+                        extracted.imageFileIds = imageFileIds
+                        messages.append(extracted)
                     }
                 }
             }
@@ -250,6 +457,109 @@ final class ChatGPTImportService {
 
         conversation.messages = messages
         return (conversation, messages)
+    }
+
+    /// Create conversation with image support from ChatGPT export
+    private func createConversationWithImages(
+        from chatGPTConvo: ChatGPTConversation,
+        imageIndex: [String: URL],
+        modelContext: ModelContext
+    ) throws -> (Conversation, [Message]) {
+        // Extract messages from tree
+        let extractedMessages = extractMessagePath(from: chatGPTConvo.mapping)
+
+        // Convert timestamps
+        let createdAt = Date(timeIntervalSince1970: chatGPTConvo.createTime)
+        let updatedAt = Date(timeIntervalSince1970: chatGPTConvo.updateTime)
+
+        // Create conversation
+        let conversation = Conversation(
+            title: chatGPTConvo.title,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+        conversation.hasTitleBeenGenerated = true  // Don't regenerate imported titles
+
+        // Create messages
+        var messages: [Message] = []
+        for extracted in extractedMessages {
+            let role: MessageRole = extracted.role == "user" ? .user : .assistant
+            let timestamp = extracted.createTime.map { Date(timeIntervalSince1970: $0) } ?? createdAt
+
+            let message = Message(
+                role: role,
+                content: extracted.content,
+                timestamp: timestamp,
+                modelUsed: extracted.role == "assistant" ? "ChatGPT (imported)" : nil
+            )
+
+            // Load and attach images
+            for fileId in extracted.imageFileIds {
+                if let attachment = loadImageAttachment(fileId: fileId, from: imageIndex, modelContext: modelContext) {
+                    message.attachments.append(attachment)
+                }
+            }
+
+            message.conversation = conversation
+            messages.append(message)
+        }
+
+        conversation.messages = messages
+        return (conversation, messages)
+    }
+
+    /// Load an image file from the index and create an Attachment
+    private func loadImageAttachment(fileId: String, from imageIndex: [String: URL], modelContext: ModelContext) -> Attachment? {
+        // Try to find the file in the index
+        var fileURL: URL?
+
+        // Try exact match first
+        if let url = imageIndex[fileId] {
+            fileURL = url
+        } else {
+            // Try with common extensions
+            for ext in ["png", "jpg", "jpeg", "webp", "gif"] {
+                if let url = imageIndex["\(fileId).\(ext)"] {
+                    fileURL = url
+                    break
+                }
+            }
+        }
+
+        guard let url = fileURL else {
+            logger.debug("Image file not found for ID: \(fileId)")
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let mimeType = mimeTypeForExtension(url.pathExtension)
+
+            let attachment = Attachment(
+                type: .image,
+                mimeType: mimeType,
+                data: data,
+                filename: url.lastPathComponent
+            )
+            modelContext.insert(attachment)
+
+            logger.debug("Loaded image: \(url.lastPathComponent) (\(data.count) bytes)")
+            return attachment
+        } catch {
+            logger.warning("Failed to load image \(url.lastPathComponent): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Get MIME type for file extension
+    private func mimeTypeForExtension(_ ext: String) -> String {
+        switch ext.lowercased() {
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        default: return "application/octet-stream"
+        }
     }
 
     // MARK: - Background Embedding Generation

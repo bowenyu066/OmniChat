@@ -37,11 +37,15 @@ struct ImportDataView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     instructionRow(number: 1, text: "Go to ChatGPT Settings → Data controls")
                     instructionRow(number: 2, text: "Click \"Export data\"")
-                    instructionRow(number: 3, text: "Download and unzip the file")
-                    instructionRow(number: 4, text: "Select conversations.json below")
+                    instructionRow(number: 3, text: "Download the ZIP file")
+                    instructionRow(number: 4, text: "Select the ZIP file or conversations.json below")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                Text("Tip: Import the ZIP file directly to include images from your conversations.")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
             }
 
             Divider()
@@ -64,7 +68,7 @@ struct ImportDataView: View {
                 resultView(result)
             } else {
                 Button(action: { showFilePicker = true }) {
-                    Label("Select conversations.json", systemImage: "doc.badge.plus")
+                    Label("Select ZIP or conversations.json", systemImage: "doc.badge.plus")
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -91,7 +95,7 @@ struct ImportDataView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .fileImporter(
             isPresented: $showFilePicker,
-            allowedContentTypes: [UTType.json],
+            allowedContentTypes: [UTType.json, UTType.zip],
             allowsMultipleSelection: false
         ) { fileResult in
             handleFileSelection(fileResult)
@@ -174,6 +178,9 @@ struct ImportDataView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("• \(result.conversationsImported) conversations imported")
                 Text("• \(result.messagesImported) messages imported")
+                if result.imagesImported > 0 {
+                    Text("• \(result.imagesImported) images imported")
+                }
                 if result.conversationsSkipped > 0 {
                     Text("• \(result.conversationsSkipped) empty conversations skipped")
                         .foregroundStyle(.secondary)
@@ -233,6 +240,9 @@ struct ImportDataView: View {
         // Start accessing security-scoped resource
         let accessing = url.startAccessingSecurityScopedResource()
 
+        // Determine if it's a ZIP file
+        let isZipFile = url.pathExtension.lowercased() == "zip"
+
         Task {
             defer {
                 if accessing {
@@ -241,12 +251,26 @@ struct ImportDataView: View {
             }
 
             do {
-                let importResult = try await importService.importFromFile(
-                    url,
-                    modelContext: modelContext,
-                    generateEmbeddings: generateEmbeddings
-                ) { progress in
-                    self.progress = progress
+                let importResult: ChatGPTImportService.ImportResult
+
+                if isZipFile {
+                    // Import from ZIP (includes images)
+                    importResult = try await importService.importFromZip(
+                        url,
+                        modelContext: modelContext,
+                        generateEmbeddings: generateEmbeddings
+                    ) { progress in
+                        self.progress = progress
+                    }
+                } else {
+                    // Import from JSON only (no images)
+                    importResult = try await importService.importFromFile(
+                        url,
+                        modelContext: modelContext,
+                        generateEmbeddings: generateEmbeddings
+                    ) { progress in
+                        self.progress = progress
+                    }
                 }
 
                 await MainActor.run {

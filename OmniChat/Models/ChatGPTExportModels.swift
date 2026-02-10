@@ -55,18 +55,29 @@ struct ChatGPTContent: Codable {
     }
 }
 
-/// Content part - can be string or other types
+/// Content part - can be string, image, or other types
 enum ChatGPTContentPart: Codable {
     case string(String)
+    case image(ChatGPTImagePart)
     case other
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
+
+        // Try string first
         if let stringValue = try? container.decode(String.self) {
             self = .string(stringValue)
-        } else {
-            self = .other
+            return
         }
+
+        // Try image object
+        if let imagePart = try? container.decode(ChatGPTImagePart.self) {
+            self = .image(imagePart)
+            return
+        }
+
+        // Unknown type
+        self = .other
     }
 
     func encode(to encoder: Encoder) throws {
@@ -74,6 +85,8 @@ enum ChatGPTContentPart: Codable {
         switch self {
         case .string(let value):
             try container.encode(value)
+        case .image(let imagePart):
+            try container.encode(imagePart)
         case .other:
             try container.encodeNil()
         }
@@ -82,6 +95,37 @@ enum ChatGPTContentPart: Codable {
     var stringValue: String? {
         if case .string(let value) = self {
             return value
+        }
+        return nil
+    }
+
+    var imagePart: ChatGPTImagePart? {
+        if case .image(let part) = self {
+            return part
+        }
+        return nil
+    }
+}
+
+/// Image part from ChatGPT export
+struct ChatGPTImagePart: Codable {
+    let assetPointer: String?
+    let contentType: String?
+    let width: Int?
+    let height: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case assetPointer = "asset_pointer"
+        case contentType = "content_type"
+        case width, height
+    }
+
+    /// Extract the file ID from asset_pointer (e.g., "file-service://file-AbCdEf123456" -> "file-AbCdEf123456")
+    var fileId: String? {
+        guard let pointer = assetPointer else { return nil }
+        // asset_pointer format: "file-service://file-XXXX"
+        if pointer.hasPrefix("file-service://") {
+            return String(pointer.dropFirst("file-service://".count))
         }
         return nil
     }
@@ -104,4 +148,12 @@ struct ExtractedChatGPTMessage {
     let role: String
     let content: String
     let createTime: Double?
+    var imageFileIds: [String] = []  // File IDs for images to be loaded from ZIP
+}
+
+/// Image data extracted from ZIP
+struct ExtractedImageData {
+    let data: Data
+    let mimeType: String
+    let filename: String
 }
