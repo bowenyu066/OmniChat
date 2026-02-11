@@ -9,10 +9,19 @@ struct MessageView: View {
     var isStreaming: Bool = false
     var streamingContent: String? = nil  // Override content during streaming (avoids SwiftData triggers)
     var siblings: [Message] = []  // All sibling messages (including this one)
+    var thinkingDuration: TimeInterval? = nil  // How long model "thought" before first token
     var onRetry: (() -> Void)?
     var onSwitchModel: ((AIModel) -> Void)?
     var onBranch: (() -> Void)?
     var onSwitchSibling: ((Message) -> Void)?
+    var onEdit: ((String) -> Void)?  // For editing user messages
+
+    @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
+    @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
+    @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
+
+    @State private var isEditing = false
+    @State private var editedContent = ""
 
     /// Content to display - uses streaming buffer if available, otherwise message content
     private var displayContent: String {
@@ -29,7 +38,7 @@ struct MessageView: View {
 
     var body: some View {
         VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
-            // Header: timestamp for user, model name + timestamp + sibling nav for assistant
+            // Header: timestamp for user, model name/timing for assistant, and sibling nav when branching exists
             HStack(spacing: 6) {
                 if !isUser {
                     Text(modelDisplayName)
@@ -37,19 +46,35 @@ struct MessageView: View {
                         .fontWeight(.semibold)
                         .foregroundStyle(.secondary)
 
-                    // Sibling navigation (only show if there are multiple siblings)
-                    if siblings.count > 1 {
-                        SiblingNavigator(
-                            currentMessage: message,
-                            siblings: siblings,
-                            onSwitch: onSwitchSibling
-                        )
+                    // Thinking duration badge
+                    if let duration = thinkingDuration, !isStreaming {
+                        Text("· thought for \(formattedDuration(duration))")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
+                }
+
+                // Assistant sibling nav stays before timestamp
+                if !isUser && siblings.count > 1 {
+                    SiblingNavigator(
+                        currentMessage: message,
+                        siblings: siblings,
+                        onSwitch: onSwitchSibling
+                    )
                 }
 
                 Text(message.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+
+                // User sibling nav appears beside timestamp after edit-branching
+                if isUser && siblings.count > 1 {
+                    SiblingNavigator(
+                        currentMessage: message,
+                        siblings: siblings,
+                        onSwitch: onSwitchSibling
+                    )
+                }
             }
 
             // Attachments (if any)
@@ -65,22 +90,64 @@ struct MessageView: View {
             if isUser {
                 // User messages: plain text with bubble (only if there's text)
                 if !message.content.isEmpty {
-                    Text(message.content)
-                        .font(.body)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(userMessageBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .foregroundStyle(.white)
+                    if isEditing {
+                        // Edit mode
+                        VStack(alignment: .trailing, spacing: 8) {
+                            TextEditor(text: $editedContent)
+                                .font(.body)
+                                .frame(minHeight: 60, maxHeight: 200)
+                                .padding(8)
+                                .background(Color(nsColor: .textBackgroundColor))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.accentColor, lineWidth: 2)
+                                )
 
-                    // Copy button for user messages
-                    Button(action: copyToClipboard) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            HStack(spacing: 8) {
+                                Button("Cancel") {
+                                    isEditing = false
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button("Save") {
+                                    let trimmed = editedContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty && trimmed != message.content {
+                                        onEdit?(trimmed)
+                                    }
+                                    isEditing = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(editedContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
+                        .frame(maxWidth: 500)
+                    } else {
+                        // Normal display mode
+                        Text(message.content)
+                            .font(.body)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(userMessageBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                            .foregroundStyle(.white)
+
+                        // Action buttons for user messages
+                        HStack(spacing: 4) {
+                            // Copy button
+                            ActionButton(icon: "doc.on.doc", tooltip: "Copy") {
+                                copyToClipboard()
+                            }
+
+                            // Edit button
+                            if onEdit != nil {
+                                ActionButton(icon: "pencil", tooltip: "Edit message") {
+                                    editedContent = message.content
+                                    isEditing = true
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help("Copy to clipboard")
                 }
             } else {
                 // Assistant messages: use lightweight text while streaming to reduce CPU.
@@ -165,8 +232,9 @@ struct MessageView: View {
     }
 
     private var userMessageBackground: some ShapeStyle {
-        LinearGradient(
-            colors: [Color.blue, Color.blue.opacity(0.8)],
+        let base = Color(red: bubbleRed, green: bubbleGreen, blue: bubbleBlue)
+        return LinearGradient(
+            colors: [base, base.opacity(0.85)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
@@ -175,6 +243,16 @@ struct MessageView: View {
     private var modelDisplayName: String {
         guard let modelUsed = message.modelUsed else { return "Assistant" }
         return AIModel(rawValue: modelUsed)?.displayName ?? modelUsed
+    }
+
+    private func formattedDuration(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return "\(Int(seconds))s"
+        } else {
+            let mins = Int(seconds) / 60
+            let secs = Int(seconds) % 60
+            return secs > 0 ? "\(mins)min \(secs)s" : "\(mins)min"
+        }
     }
 }
 

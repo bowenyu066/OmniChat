@@ -18,6 +18,11 @@ struct ChatView: View {
     @State private var pendingAttachments: [PendingAttachment] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var loadingStartTime: Date?
+    @State private var loadingElapsedSeconds: Int = 0
+    @State private var loadingTimer: Timer?
+    @State private var thinkingDurations: [UUID: TimeInterval] = [:]  // messageId -> seconds
+    @AppStorage("include_time_context") private var includeTimeContext = true
     @State private var currentStreamingMessage: Message?
     @State private var showMemoryPanel = true
     @State private var memoryContextConfig = MemoryContextConfig()
@@ -104,10 +109,12 @@ struct ChatView: View {
                     isStreaming: isThisStreaming,
                     streamingContent: isThisStreaming ? streamingContent : nil,
                     siblings: siblings,
+                    thinkingDuration: thinkingDurations[message.id],
                     onRetry: message.role == .assistant ? { retryMessage(message) } : nil,
                     onSwitchModel: message.role == .assistant ? { newModel in switchModel(for: message, to: newModel) } : nil,
                     onBranch: message.role == .assistant ? { branchFromMessage(message) } : nil,
-                    onSwitchSibling: message.role == .assistant && siblings.count > 1 ? { sibling in switchToSibling(sibling) } : nil
+                    onSwitchSibling: siblings.count > 1 ? { sibling in switchToSibling(sibling) } : nil,
+                    onEdit: message.role == .user ? { newContent in editUserMessage(message, newContent: newContent) } : nil
                 )
                 .id(message.id)
             }
@@ -120,11 +127,14 @@ struct ChatView: View {
     }
 
     private var loadingIndicator: some View {
-        HStack {
+        HStack(spacing: 10) {
             ProgressView()
-                .scaleEffect(0.8)
-            Text("Thinking...")
-                .foregroundStyle(.secondary)
+                .scaleEffect(0.9)
+            Text(loadingElapsedSeconds > 0 ? "Thinking for \(loadingElapsedSeconds)s..." : "Thinking...")
+                .font(.subheadline)
+                .foregroundStyle(.primary.opacity(0.7))
+                .monospacedDigit()
+                .contentTransition(.numericText())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 24)
@@ -249,6 +259,15 @@ struct ChatView: View {
         var prompt = """
         You are a helpful AI assistant. Keep responses clear and concise.
         """
+
+        // Inject current date/time if enabled
+        if includeTimeContext {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .full
+            formatter.timeStyle = .short
+            let timeString = formatter.string(from: Date())
+            prompt += "\n\nCurrent date and time: \(timeString)"
+        }
 
         // Layer 1: Include memories based on config (highest priority)
         let memoryStartTime = Date()
@@ -379,6 +398,138 @@ struct ChatView: View {
         createSiblingAndRegenerate(for: message, withModel: newModel)
     }
 
+    /// Edit a user message - creates a sibling branch with new content and regenerates
+    private func editUserMessage(_ message: Message, newContent: String) {
+        guard message.role == .user else { return }
+
+        // Set up sibling group if not already set
+        let groupId = message.siblingGroupId ?? message.id
+        if message.siblingGroupId == nil {
+            message.siblingGroupId = groupId
+            message.siblingIndex = 0
+        }
+
+        // Find highest sibling index
+        let siblings = conversation.messages.filter { $0.siblingGroupId == groupId }
+        let maxIndex = siblings.map { $0.siblingIndex }.max() ?? 0
+
+        // Mark original as inactive
+        message.isActive = false
+
+        // Create new user message sibling
+        let newUserMessage = Message(
+            role: .user,
+            content: newContent,
+            timestamp: message.timestamp
+        )
+        newUserMessage.siblingGroupId = groupId
+        newUserMessage.siblingIndex = maxIndex + 1
+        newUserMessage.isActive = true
+        newUserMessage.precedingMessageId = message.precedingMessageId
+
+        // Copy attachments if any
+        for attachment in message.attachments {
+            let newAttachment = Attachment(
+                type: attachment.type,
+                mimeType: attachment.mimeType,
+                data: attachment.data,
+                filename: attachment.filename
+            )
+            modelContext.insert(newAttachment)
+            newUserMessage.attachments.append(newAttachment)
+        }
+
+        modelContext.insert(newUserMessage)
+        newUserMessage.conversation = conversation
+        conversation.messages.append(newUserMessage)
+
+        // Refresh display
+        refreshSortedMessages()
+
+        // Now generate a response for the edited message
+        generateResponseForEditedMessage(userMessage: newUserMessage)
+    }
+
+    /// Generate a response for an edited user message
+    private func generateResponseForEditedMessage(userMessage: Message) {
+        errorMessage = nil
+        startLoading()
+
+        let service = apiServiceFactory.service(for: selectedModel)
+        guard service.isConfigured else {
+            stopLoading()
+            errorMessage = "Please add your \(selectedModel.provider.displayName) API key in Settings (⌘,)"
+            return
+        }
+
+        // Create assistant message
+        let assistantMessage = Message(
+            role: .assistant,
+            content: "",
+            modelUsed: selectedModel.rawValue
+        )
+        assistantMessage.precedingMessageId = userMessage.id
+
+        modelContext.insert(assistantMessage)
+        assistantMessage.conversation = conversation
+        conversation.messages.append(assistantMessage)
+        currentStreamingMessage = assistantMessage
+        refreshSortedMessages()
+
+        let modelToUse = selectedModel
+        let visibleContext = sortedMessagesCache
+
+        Task {
+            var chatMessages = visibleContext
+                .filter { $0.id != assistantMessage.id }
+                .map { ChatMessage(from: $0) }
+
+            if !chatMessages.contains(where: { $0.role == "system" }) {
+                let systemPrompt = await getSystemPrompt(for: modelToUse.provider, userPrompt: userMessage.content)
+                chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+            }
+
+            let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
+            var contentBuffer = ""
+            var firstTokenAt: Date?
+
+            do {
+                for try await chunk in stream {
+                    if firstTokenAt == nil {
+                        firstTokenAt = Date()
+                        let thinkingSeconds = loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                        await MainActor.run {
+                            stopLoading()
+                            thinkingDurations[assistantMessage.id] = thinkingSeconds
+                        }
+                    }
+                    contentBuffer += chunk
+                    await MainActor.run {
+                        streamingContent = contentBuffer
+                    }
+                }
+
+                await MainActor.run {
+                    assistantMessage.content = contentBuffer
+                    streamingContent = ""
+                    currentStreamingMessage = nil
+                    refreshSortedMessages()
+                    conversation.updatedAt = Date()
+                }
+            } catch {
+                await MainActor.run {
+                    if assistantMessage.content.isEmpty {
+                        assistantMessage.content = "⚠️ Error: \(error.localizedDescription)"
+                    }
+                    errorMessage = error.localizedDescription
+                    stopLoading()
+                    currentStreamingMessage = nil
+                    refreshSortedMessages()
+                }
+            }
+        }
+    }
+
     /// Creates a new sibling message and regenerates the response
     private func createSiblingAndRegenerate(for originalMessage: Message, withModel model: AIModel) {
         // Set up sibling group if not already set
@@ -473,7 +624,7 @@ struct ChatView: View {
     }
 
     private func regenerateResponse(for assistantMessage: Message) {
-        isLoading = true
+        startLoading()
         currentStreamingMessage = assistantMessage
         streamingContent = ""  // Reset streaming buffer
 
@@ -482,7 +633,7 @@ struct ChatView: View {
         let service = apiServiceFactory.service(for: modelToUse)
 
         guard service.isConfigured else {
-            isLoading = false
+            stopLoading()
             errorMessage = "Please add your \(modelToUse.provider.displayName) API key in Settings (⌘,)"
             return
         }
@@ -526,7 +677,7 @@ struct ChatView: View {
                     assistantMessage.content = finalContent
                     streamingContent = ""
                     conversation.updatedAt = Date()
-                    isLoading = false
+                    stopLoading()
                     currentStreamingMessage = nil
                 }
 
@@ -540,7 +691,7 @@ struct ChatView: View {
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
-                    isLoading = false
+                    stopLoading()
                     currentStreamingMessage = nil
                 }
             }
@@ -632,12 +783,12 @@ struct ChatView: View {
         inputText = ""
         pendingAttachments = []
         errorMessage = nil
-        isLoading = true
+        startLoading()
 
         // Prepare service
         let service = apiServiceFactory.service(for: selectedModel)
         guard service.isConfigured else {
-            isLoading = false
+            stopLoading()
             errorMessage = "Please add your \(selectedModel.provider.displayName) API key in Settings (⌘,)"
             return
         }
@@ -733,6 +884,12 @@ struct ChatView: View {
 
                     if firstTokenAt == nil {
                         firstTokenAt = Date()
+                        // Stop the loading spinner and record thinking duration
+                        let thinkingSeconds = loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                        await MainActor.run {
+                            stopLoading()
+                            thinkingDurations[assistantMessage.id] = thinkingSeconds
+                        }
                     }
                     chunkCount += 1
                     chunkBytes += chunk.utf8.count
@@ -777,7 +934,7 @@ struct ChatView: View {
                     }
 
                     conversation.updatedAt = Date()
-                    isLoading = false
+                    stopLoading()
                     currentStreamingMessage = nil
                     // Trigger title generation from full context (user + assistant)
                     conversation.generateTitleFromContextAsync()
@@ -798,18 +955,42 @@ struct ChatView: View {
                     activeStreamScrollEvents = 0
                     activeStreamUIUpdates = 0
 
-                    // Remove the empty assistant message on error
-                    if assistantMessage.content.isEmpty,
-                       let index = conversation.messages.firstIndex(where: { $0.id == assistantMessage.id }) {
-                        conversation.messages.remove(at: index)
+                    // Keep the message but set error content so retry buttons are visible
+                    if assistantMessage.content.isEmpty {
+                        assistantMessage.content = "⚠️ Error: \(error.localizedDescription)"
                     }
 
                     errorMessage = error.localizedDescription
-                    isLoading = false
+                    stopLoading()
                     currentStreamingMessage = nil
+                    refreshSortedMessages()
                 }
             }
         }
+    }
+
+    // MARK: - Loading Timer Management
+
+    private func startLoading() {
+        isLoading = true
+        loadingStartTime = Date()
+        loadingElapsedSeconds = 0
+
+        // Start timer to update elapsed seconds
+        loadingTimer?.invalidate()
+        loadingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            if let startTime = loadingStartTime {
+                loadingElapsedSeconds = Int(Date().timeIntervalSince(startTime))
+            }
+        }
+    }
+
+    private func stopLoading() {
+        isLoading = false
+        loadingTimer?.invalidate()
+        loadingTimer = nil
+        loadingStartTime = nil
+        loadingElapsedSeconds = 0
     }
 
     private var isPerfLoggingEnabled: Bool {

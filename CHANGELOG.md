@@ -2,6 +2,32 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.3.3-beta (2026-02-11) - Chat Import, Branching, and Hybrid Search
+
+**Added:**
+- Hybrid chat history search in sidebar: keyword matches first, semantic matches second
+- New semantic conversation search service using existing RAG embeddings
+- User message edit flow with branching support (edit creates alternate branch)
+- User-message sibling navigator support for switching between edited variants
+- Import cleanup controls to remove duplicate imports or reset ChatGPT imports
+- Chat bubble color customization and thinking-duration display (`thought for Xs`)
+- Optional current time injection toggle in memory context panel
+- Audio recorder waveform visualization with improved one-click recording UX
+
+**Improved:**
+- ChatGPT import deduplication with backward-compatible fallback matching
+- ChatGPT mixed content parsing (text + image) during import
+- Sidebar search experience with loading feedback for semantic lookup
+- Retry/branching-related chat UX consistency across assistant and user paths
+
+**Fixed:**
+- Duplicate conversation imports caused by missing legacy import IDs
+- Missing image imports for mixed-content ChatGPT messages
+- Timestamp updates on re-import that incorrectly shifted conversation recency
+- Audio input interaction requiring extra clicks in expanded/collapsed states
+
+---
+
 ## v0.3.2-beta (2026-02-09) - Auto-Update Notifications
 
 **Added:**

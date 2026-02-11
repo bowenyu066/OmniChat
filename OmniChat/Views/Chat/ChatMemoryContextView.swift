@@ -21,6 +21,7 @@ struct MemoryContextConfig: Codable, Equatable {
 struct ChatMemoryContextView: View {
     @Binding var config: MemoryContextConfig
     @State private var showDetailedCustomization = false
+    @AppStorage("include_time_context") private var includeTimeContext = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -72,6 +73,21 @@ struct ChatMemoryContextView: View {
                 .foregroundColor(.blue)
             }
             .buttonStyle(.plain)
+
+            Divider()
+
+            // Time context toggle
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(isOn: $includeTimeContext) {
+                    Text("Include current time")
+                        .font(.subheadline)
+                }
+                .toggleStyle(.checkbox)
+
+                Text("Send date & time to the model for temporal awareness")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Spacer()
         }

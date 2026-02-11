@@ -11,6 +11,11 @@ struct ImportDataView: View {
     @State private var result: ChatGPTImportService.ImportResult?
     @State private var errorMessage: String?
     @State private var generateEmbeddings = true
+    @State private var cleanupResult: ChatGPTImportService.CleanupResult?
+    @State private var isCleaningUp = false
+    @State private var showRemoveAllConfirmation = false
+    @State private var removeAllResult: ChatGPTImportService.RemoveAllResult?
+    @State private var isRemovingAll = false
 
     private let importService = ChatGPTImportService.shared
 
@@ -89,7 +94,85 @@ struct ImportDataView: View {
                 backgroundEmbeddingView
             }
 
+            Divider()
+
+            // Cleanup section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Maintenance")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                // Duplicate cleanup
+                if let cleanup = cleanupResult {
+                    HStack {
+                        Image(systemName: cleanup.duplicatesRemoved > 0 ? "checkmark.circle.fill" : "info.circle.fill")
+                            .foregroundStyle(cleanup.duplicatesRemoved > 0 ? .green : .blue)
+                        if cleanup.duplicatesRemoved > 0 {
+                            Text("Removed \(cleanup.duplicatesRemoved) duplicate conversations")
+                        } else {
+                            Text("No duplicates found")
+                        }
+                    }
+                    .font(.caption)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button(action: runCleanup) {
+                            if isCleaningUp {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Label("Remove Duplicate Conversations", systemImage: "doc.on.doc")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isCleaningUp || isImporting || isRemovingAll)
+
+                        Text("Finds and removes duplicate imported conversations, keeping the one with the most content.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                // Remove all imports
+                if let removeResult = removeAllResult {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Removed \(removeResult.conversationsRemoved) imported conversations")
+                    }
+                    .font(.caption)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button(action: { showRemoveAllConfirmation = true }) {
+                            if isRemovingAll {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Label("Remove All ChatGPT Imports", systemImage: "trash")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .disabled(isCleaningUp || isImporting || isRemovingAll)
+
+                        Text("Removes all conversations imported from ChatGPT. This cannot be undone.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Spacer()
+        }
+        .alert("Remove All ChatGPT Imports?", isPresented: $showRemoveAllConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove All", role: .destructive) {
+                runRemoveAll()
+            }
+        } message: {
+            Text("This will permanently delete all conversations imported from ChatGPT. This action cannot be undone.")
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -239,6 +322,49 @@ struct ImportDataView: View {
 
         case .failure(let error):
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func runCleanup() {
+        isCleaningUp = true
+        cleanupResult = nil
+
+        Task {
+            do {
+                let result = try importService.removeDuplicateConversations(modelContext: modelContext)
+                await MainActor.run {
+                    self.cleanupResult = result
+                    self.isCleaningUp = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Cleanup failed: \(error.localizedDescription)"
+                    self.isCleaningUp = false
+                }
+            }
+        }
+    }
+
+    private func runRemoveAll() {
+        isRemovingAll = true
+        removeAllResult = nil
+
+        Task {
+            do {
+                let result = try importService.removeAllImportedConversations(modelContext: modelContext)
+                await MainActor.run {
+                    self.removeAllResult = result
+                    self.isRemovingAll = false
+                    // Also reset other states since we're starting fresh
+                    self.cleanupResult = nil
+                    self.result = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Remove all failed: \(error.localizedDescription)"
+                    self.isRemovingAll = false
+                }
+            }
         }
     }
 

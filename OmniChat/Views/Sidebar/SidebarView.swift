@@ -10,17 +10,47 @@ struct SidebarView: View {
 
     @State private var searchText = ""
     @State private var editingConversationId: UUID?
+    @State private var semanticResults: [ConversationSemanticSearchResult] = []
+    @State private var isSemanticSearchInProgress = false
+    @State private var semanticSearchTask: Task<Void, Never>?
 
-    private var filteredConversations: [Conversation] {
-        if searchText.isEmpty {
-            return conversations
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isSearching: Bool {
+        !trimmedSearchText.isEmpty
+    }
+
+    /// Keyword-first matching (direct pattern match)
+    private var keywordMatchedConversations: [Conversation] {
+        guard isSearching else { return [] }
+        return conversations
+            .filter { $0.title.localizedCaseInsensitiveContains(trimmedSearchText) }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var keywordMatchedIds: Set<UUID> {
+        Set(keywordMatchedConversations.map(\.id))
+    }
+
+    private var conversationById: [UUID: Conversation] {
+        Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
+    }
+
+    /// Semantic matches come after keyword matches and are de-duplicated
+    private var semanticMatchedConversations: [Conversation] {
+        guard isSearching else { return [] }
+
+        return semanticResults.compactMap { result in
+            guard !keywordMatchedIds.contains(result.conversationId) else { return nil }
+            return conversationById[result.conversationId]
         }
-        return conversations.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
     }
 
     /// Group conversations by date category
     private var groupedConversations: [(key: DateGroup, conversations: [Conversation])] {
-        let grouped = Dictionary(grouping: filteredConversations) { conversation in
+        let grouped = Dictionary(grouping: conversations) { conversation in
             DateGroup.from(date: conversation.updatedAt)
         }
 
@@ -33,44 +63,92 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             List(selection: $selectedConversation) {
-                ForEach(groupedConversations, id: \.key) { group in
-                    Section {
-                        ForEach(group.conversations) { conversation in
-                            ConversationRow(
-                                conversation: conversation,
-                                isEditing: Binding(
-                                    get: { editingConversationId == conversation.id },
-                                    set: { newValue in
-                                        editingConversationId = newValue ? conversation.id : nil
-                                    }
-                                )
-                            )
-                            .tag(conversation)
-                            .contextMenu {
-                                Button {
-                                    editingConversationId = conversation.id
-                                } label: {
-                                    Label("Rename", systemImage: "pencil")
-                                }
+                if isSearching {
+                    if !keywordMatchedConversations.isEmpty {
+                        Section {
+                            ForEach(keywordMatchedConversations) { conversation in
+                                conversationRow(for: conversation)
+                            }
+                        } header: {
+                            Text("Keyword Matches")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
-                                Divider()
+                    if isSemanticSearchInProgress {
+                        Section {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Searching semantically...")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
 
-                                Button(role: .destructive) {
-                                    onDelete(conversation)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    if !semanticMatchedConversations.isEmpty {
+                        Section {
+                            ForEach(semanticMatchedConversations) { conversation in
+                                conversationRow(for: conversation)
+                            }
+                        } header: {
+                            Text("Semantic Matches")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if keywordMatchedConversations.isEmpty &&
+                        semanticMatchedConversations.isEmpty &&
+                        !isSemanticSearchInProgress {
+                        Section {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("No matches found")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+
+                                if !EmbeddingService.shared.isConfigured {
+                                    Text("Add an OpenAI API key to enable semantic search.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Try a different keyword.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
+                            .padding(.vertical, 4)
                         }
-                    } header: {
-                        Text(group.key.displayName)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    ForEach(groupedConversations, id: \.key) { group in
+                        Section {
+                            ForEach(group.conversations) { conversation in
+                                conversationRow(for: conversation)
+                            }
+                        } header: {
+                            Text(group.key.displayName)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
             .searchable(text: $searchText, prompt: "Search chats")
+            .onChange(of: searchText) { _, newValue in
+                triggerSemanticSearch(for: newValue)
+            }
+            .onChange(of: conversations.count) { _, _ in
+                if isSearching {
+                    triggerSemanticSearch(for: searchText)
+                }
+            }
 
             Divider()
 
@@ -110,6 +188,85 @@ struct SidebarView: View {
                     Label("New Chat", systemImage: "square.and.pencil")
                 }
                 .keyboardShortcut("n", modifiers: .command)
+            }
+        }
+        .onDisappear {
+            semanticSearchTask?.cancel()
+        }
+    }
+
+    @ViewBuilder
+    private func conversationRow(for conversation: Conversation) -> some View {
+        ConversationRow(
+            conversation: conversation,
+            isEditing: Binding(
+                get: { editingConversationId == conversation.id },
+                set: { newValue in
+                    editingConversationId = newValue ? conversation.id : nil
+                }
+            )
+        )
+        .tag(conversation)
+        .contextMenu {
+            Button {
+                editingConversationId = conversation.id
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                onDelete(conversation)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func triggerSemanticSearch(for query: String) {
+        semanticSearchTask?.cancel()
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            semanticResults = []
+            isSemanticSearchInProgress = false
+            return
+        }
+
+        guard EmbeddingService.shared.isConfigured else {
+            semanticResults = []
+            isSemanticSearchInProgress = false
+            return
+        }
+
+        let conversationsSnapshot = conversations
+        isSemanticSearchInProgress = true
+
+        semanticSearchTask = Task {
+            do {
+                // Debounce to avoid API calls on every keystroke.
+                try await Task.sleep(nanoseconds: 300_000_000)
+                if Task.isCancelled { return }
+
+                let results = try await ConversationSemanticSearchService.shared.search(
+                    query: trimmed,
+                    conversations: conversationsSnapshot,
+                    limit: 25
+                )
+
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    semanticResults = results
+                    isSemanticSearchInProgress = false
+                }
+            } catch is CancellationError {
+                // Ignore cancellation from rapid typing.
+            } catch {
+                await MainActor.run {
+                    semanticResults = []
+                    isSemanticSearchInProgress = false
+                }
             }
         }
     }
