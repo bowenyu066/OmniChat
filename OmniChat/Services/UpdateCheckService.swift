@@ -18,6 +18,8 @@ struct GitHubRelease: Codable {
     let body: String
     let html_url: String
     let published_at: String
+    let prerelease: Bool
+    let draft: Bool
     let assets: [GitHubAsset]
 }
 
@@ -156,7 +158,7 @@ extension UserDefaults {
 final class UpdateCheckService: ObservableObject {
     static let shared = UpdateCheckService()
 
-    private let githubRepoURL = "https://api.github.com/repos/bowenyu066/OmniChat/releases/latest"
+    private let githubReleasesURL = "https://api.github.com/repos/bowenyu066/OmniChat/releases?per_page=20"
 
     @Published var availableUpdate: AppUpdateInfo?
     @Published var isChecking: Bool = false
@@ -174,8 +176,22 @@ final class UpdateCheckService: ObservableObject {
         defer { isChecking = false }
 
         do {
-            let release = try await fetchLatestRelease()
-            let updateInfo = try parseReleaseInfo(release)
+            // Compare with current version
+            guard let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+                availableUpdate = nil
+                return
+            }
+
+            let current = SemanticVersion(parsing: currentVersion)
+            let includePrereleases = current.prerelease != nil
+
+            let releases = try await fetchReleases()
+            guard let latestRelease = selectLatestRelease(from: releases, includePrereleases: includePrereleases) else {
+                availableUpdate = nil
+                return
+            }
+            let updateInfo = try parseReleaseInfo(latestRelease)
+            let latest = SemanticVersion(parsing: updateInfo.version)
 
             // Update last check date
             lastCheckDate = Date()
@@ -184,19 +200,9 @@ final class UpdateCheckService: ObservableObject {
             // Check if this version was dismissed
             if let dismissedVersion = UserDefaults.standard.dismissedUpdateVersion,
                dismissedVersion == updateInfo.version {
-                // User dismissed this version - don't show
                 availableUpdate = nil
                 return
             }
-
-            // Compare with current version
-            guard let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
-                availableUpdate = nil
-                return
-            }
-
-            let current = SemanticVersion(parsing: currentVersion)
-            let latest = SemanticVersion(parsing: updateInfo.version)
 
             if latest > current {
                 availableUpdate = updateInfo
@@ -265,8 +271,8 @@ final class UpdateCheckService: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func fetchLatestRelease() async throws -> GitHubRelease {
-        guard let url = URL(string: githubRepoURL) else {
+    private func fetchReleases() async throws -> [GitHubRelease] {
+        guard let url = URL(string: githubReleasesURL) else {
             throw UpdateCheckError.invalidResponse
         }
 
@@ -290,11 +296,37 @@ final class UpdateCheckService: ObservableObject {
         }
 
         do {
-            let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-            return release
+            return try JSONDecoder().decode([GitHubRelease].self, from: data)
         } catch {
             throw UpdateCheckError.parseError
         }
+    }
+
+    private func selectLatestRelease(from releases: [GitHubRelease], includePrereleases: Bool) -> GitHubRelease? {
+        let dateFormatter = ISO8601DateFormatter()
+
+        let filtered = releases.filter { release in
+            guard !release.draft else { return false }
+            if includePrereleases {
+                return true
+            }
+            return !release.prerelease
+        }
+
+        return filtered
+            .sorted { lhs, rhs in
+                let lhsVersion = SemanticVersion(parsing: lhs.tag_name)
+                let rhsVersion = SemanticVersion(parsing: rhs.tag_name)
+
+                if lhsVersion != rhsVersion {
+                    return lhsVersion > rhsVersion
+                }
+
+                let lhsDate = dateFormatter.date(from: lhs.published_at) ?? .distantPast
+                let rhsDate = dateFormatter.date(from: rhs.published_at) ?? .distantPast
+                return lhsDate > rhsDate
+            }
+            .first
     }
 
     private func parseReleaseInfo(_ release: GitHubRelease) throws -> AppUpdateInfo {
