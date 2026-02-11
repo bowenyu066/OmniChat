@@ -59,6 +59,7 @@
 		A1000032 /* ReleaseNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000032 /* ReleaseNotesView.swift */; };
 		A1000033 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000033 /* TranscriptionService.swift */; };
 		A1000034 /* AudioRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000034 /* AudioRecorderButton.swift */; };
+		A1000035 /* ConversationSemanticSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000035 /* ConversationSemanticSearchService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -116,6 +117,7 @@
 		A2000032 /* ReleaseNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReleaseNotesView.swift; sourceTree = "<group>"; };
 		A2000033 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		A2000034 /* AudioRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderButton.swift; sourceTree = "<group>"; };
+		A2000035 /* ConversationSemanticSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSemanticSearchService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -264,6 +266,7 @@
 				A200002E /* ChatGPTImportService.swift */,
 				A2000030 /* UpdateCheckService.swift */,
 				A2000033 /* TranscriptionService.swift */,
+				A2000035 /* ConversationSemanticSearchService.swift */,
 				A400000D /* APIService */,
 			);
 			path = Services;
@@ -421,6 +424,7 @@
 				A1000032 /* ReleaseNotesView.swift in Sources */,
 				A1000033 /* TranscriptionService.swift in Sources */,
 				A1000034 /* AudioRecorderButton.swift in Sources */,
+				A1000035 /* ConversationSemanticSearchService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -573,7 +577,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.2-beta;
+				MARKETING_VERSION = 0.3.3-beta;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omnichat.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -605,7 +609,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.2-beta;
+				MARKETING_VERSION = 0.3.3-beta;
 				PRODUCT_BUNDLE_IDENTIFIER = com.omnichat.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

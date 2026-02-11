@@ -371,19 +371,27 @@ final class ChatGPTImportService {
             let ext = fileURL.pathExtension.lowercased()
             guard imageExtensions.contains(ext) else { continue }
 
-            // The filename might be the file ID directly, or contain it
             let filename = fileURL.deletingPathExtension().lastPathComponent
+            let fullFilename = fileURL.lastPathComponent
 
-            // Try different patterns for file ID extraction
-            // Pattern 1: filename is the file ID (e.g., "file-AbCdEf123456.png")
+            // Index by multiple keys for flexible matching:
+
+            // 1. Full filename with extension (e.g., "file-AbCdEf123456.png")
+            index[fullFilename] = fileURL
+
+            // 2. Filename without extension (e.g., "file-AbCdEf123456")
+            index[filename] = fileURL
+
+            // 3. If filename has "file-" prefix, also index by just the ID part
             if filename.hasPrefix("file-") {
-                index[filename] = fileURL
+                let idPart = String(filename.dropFirst("file-".count))
+                index[idPart] = fileURL
             }
 
-            // Pattern 2: Just use the full filename as key
-            index[fileURL.lastPathComponent] = fileURL
+            logger.debug("Indexed image: \(fullFilename) at \(fileURL.path)")
         }
 
+        logger.info("Built image index with \(index.count) entries from \(directory.path)")
         return index
     }
 
@@ -491,10 +499,7 @@ final class ChatGPTImportService {
             }
         }
 
-        // Update the conversation's updatedAt if we added images
-        if imagesAdded > 0 {
-            existing.updatedAt = Date()
-        }
+        // Note: We don't update updatedAt to preserve the original import timestamp
 
         return (messagesUpdated, imagesAdded)
     }
@@ -535,8 +540,16 @@ final class ChatGPTImportService {
                         for part in parts {
                             if let text = part.stringValue {
                                 textParts.append(text)
-                            } else if let imagePart = part.imagePart, let fileId = imagePart.fileId {
-                                imageFileIds.append(fileId)
+                            } else if let imagePart = part.imagePart {
+                                if let fileId = imagePart.fileId {
+                                    imageFileIds.append(fileId)
+                                    logger.debug("Found image reference: \(fileId) (from asset_pointer: \(imagePart.assetPointer ?? "nil"))")
+                                } else {
+                                    logger.debug("Image part has no fileId. asset_pointer: \(imagePart.assetPointer ?? "nil")")
+                                }
+                            } else if case .other = part {
+                                // Log when we get an "other" type - might be an unrecognized image format
+                                logger.debug("Found 'other' content part type in message")
                             }
                         }
                     }
@@ -658,24 +671,56 @@ final class ChatGPTImportService {
 
     /// Load an image file from the index and create an Attachment
     private func loadImageAttachment(fileId: String, from imageIndex: [String: URL], modelContext: ModelContext) -> Attachment? {
-        // Try to find the file in the index
+        // Try to find the file in the index using multiple strategies
         var fileURL: URL?
 
-        // Try exact match first
+        // Strategy 1: Exact match
         if let url = imageIndex[fileId] {
             fileURL = url
-        } else {
-            // Try with common extensions
+            logger.debug("Found image by exact match: \(fileId)")
+        }
+
+        // Strategy 2: Try with common extensions
+        if fileURL == nil {
             for ext in ["png", "jpg", "jpeg", "webp", "gif"] {
                 if let url = imageIndex["\(fileId).\(ext)"] {
                     fileURL = url
+                    logger.debug("Found image by extension match: \(fileId).\(ext)")
+                    break
+                }
+            }
+        }
+
+        // Strategy 3: If fileId has "file-" prefix, try without it
+        if fileURL == nil && fileId.hasPrefix("file-") {
+            let idWithoutPrefix = String(fileId.dropFirst("file-".count))
+            if let url = imageIndex[idWithoutPrefix] {
+                fileURL = url
+                logger.debug("Found image by ID without prefix: \(idWithoutPrefix)")
+            } else {
+                for ext in ["png", "jpg", "jpeg", "webp", "gif"] {
+                    if let url = imageIndex["\(idWithoutPrefix).\(ext)"] {
+                        fileURL = url
+                        logger.debug("Found image by ID without prefix + extension: \(idWithoutPrefix).\(ext)")
+                        break
+                    }
+                }
+            }
+        }
+
+        // Strategy 4: Partial match - look for any key containing the fileId
+        if fileURL == nil {
+            for (key, url) in imageIndex {
+                if key.contains(fileId) || fileId.contains(key.replacingOccurrences(of: ".png", with: "").replacingOccurrences(of: ".jpg", with: "").replacingOccurrences(of: ".webp", with: "")) {
+                    fileURL = url
+                    logger.debug("Found image by partial match: \(key) for \(fileId)")
                     break
                 }
             }
         }
 
         guard let url = fileURL else {
-            logger.debug("Image file not found for ID: \(fileId)")
+            logger.warning("Image file not found for ID: \(fileId). Available keys: \(Array(imageIndex.keys).prefix(10))")
             return nil
         }
 
@@ -691,7 +736,7 @@ final class ChatGPTImportService {
             )
             modelContext.insert(attachment)
 
-            logger.debug("Loaded image: \(url.lastPathComponent) (\(data.count) bytes)")
+            logger.info("Loaded image: \(url.lastPathComponent) (\(data.count) bytes)")
             return attachment
         } catch {
             logger.warning("Failed to load image \(url.lastPathComponent): \(error.localizedDescription)")
@@ -808,6 +853,126 @@ final class ChatGPTImportService {
         backgroundEmbeddingTask?.cancel()
         backgroundEmbeddingTask = nil
         isGeneratingEmbeddings = false
+    }
+
+    // MARK: - Duplicate Cleanup
+
+    struct CleanupResult {
+        var duplicatesRemoved: Int
+        var conversationsKept: Int
+    }
+
+    struct RemoveAllResult {
+        var conversationsRemoved: Int
+    }
+
+    /// Remove duplicate conversations, keeping the one with the most content (images/messages)
+    @MainActor
+    func removeDuplicateConversations(modelContext: ModelContext) throws -> CleanupResult {
+        var result = CleanupResult(duplicatesRemoved: 0, conversationsKept: 0)
+
+        // Fetch all conversations
+        let descriptor = FetchDescriptor<Conversation>(
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        let allConversations = try modelContext.fetch(descriptor)
+
+        // Group by title + approximate creation time (within 2 seconds)
+        var groups: [String: [Conversation]] = [:]
+
+        for conv in allConversations {
+            // Create a key based on title and rounded creation time
+            let roundedTime = Int(conv.createdAt.timeIntervalSince1970 / 2) * 2  // Round to 2 seconds
+            let key = "\(conv.title)|\(roundedTime)"
+
+            if groups[key] == nil {
+                groups[key] = []
+            }
+            groups[key]!.append(conv)
+        }
+
+        // Process each group with duplicates
+        for (_, conversations) in groups {
+            guard conversations.count > 1 else {
+                result.conversationsKept += 1
+                continue
+            }
+
+            // Sort by "quality" - prefer ones with more images, then more messages
+            let sorted = conversations.sorted { conv1, conv2 in
+                let images1 = conv1.messages.reduce(0) { $0 + $1.attachments.count }
+                let images2 = conv2.messages.reduce(0) { $0 + $1.attachments.count }
+
+                if images1 != images2 {
+                    return images1 > images2  // More images = better
+                }
+                return conv1.messages.count > conv2.messages.count  // More messages = better
+            }
+
+            // Keep the best one, delete the rest
+            let keeper = sorted[0]
+            keeper.importSourceId = keeper.importSourceId ?? "chatgpt:\(keeper.createdAt.timeIntervalSince1970)"
+
+            // Also update importMessageId on keeper's messages if missing
+            for message in keeper.messages {
+                if message.importMessageId == nil {
+                    message.importMessageId = message.id.uuidString
+                }
+            }
+
+            result.conversationsKept += 1
+
+            for duplicate in sorted.dropFirst() {
+                logger.info("Removing duplicate: \(duplicate.title) (created: \(duplicate.createdAt))")
+                modelContext.delete(duplicate)
+                result.duplicatesRemoved += 1
+            }
+        }
+
+        try modelContext.save()
+        logger.info("Cleanup complete: removed \(result.duplicatesRemoved) duplicates, kept \(result.conversationsKept) conversations")
+
+        return result
+    }
+
+    /// Remove all ChatGPT imported conversations
+    @MainActor
+    func removeAllImportedConversations(modelContext: ModelContext) throws -> RemoveAllResult {
+        var result = RemoveAllResult(conversationsRemoved: 0)
+
+        // Fetch all conversations
+        let descriptor = FetchDescriptor<Conversation>()
+        let allConversations = try modelContext.fetch(descriptor)
+
+        for conversation in allConversations {
+            var isImported = false
+
+            // Check if importSourceId indicates ChatGPT import
+            if let sourceId = conversation.importSourceId, sourceId.hasPrefix("chatgpt:") {
+                isImported = true
+            }
+
+            // Also check if any message has "ChatGPT (imported)" as modelUsed (for older imports)
+            if !isImported {
+                for message in conversation.messages {
+                    if message.modelUsed == "ChatGPT (imported)" {
+                        isImported = true
+                        break
+                    }
+                }
+            }
+
+            if isImported {
+                logger.info("Removing imported conversation: \(conversation.title)")
+                modelContext.delete(conversation)
+                result.conversationsRemoved += 1
+            }
+        }
+
+        try modelContext.save()
+        logger.info("Removed \(result.conversationsRemoved) imported conversations")
+
+        return result
     }
 }
 

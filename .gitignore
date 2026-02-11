@@ -38,3 +38,10 @@ ehthumbs.db
 *.swp
 *.swo
 *.tmp
+
+# Local release docs (keep local, do not publish)
+RELEASE-PROCESS.md
+DMG-BUILD-GUIDE.md
+
+# Local build output
+.derivedData/

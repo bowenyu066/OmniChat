@@ -13,6 +13,7 @@ struct MessageInputView: View {
     @State private var isDropTargeted = false
     @State private var attachmentError: String?
     @State private var textViewHeight: CGFloat = 36
+    @State private var isAudioRecording = false
 
     private let minHeight: CGFloat = 36
     private let maxHeight: CGFloat = 150
@@ -42,68 +43,75 @@ struct MessageInputView: View {
                 .padding(.horizontal, 8)
             }
 
-            // Input row
+            // Input row - changes layout when audio recording is active
             HStack(alignment: .bottom, spacing: 12) {
-                // Attachment button
-                Button(action: openFilePicker) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Add image or PDF (⌘⇧A)")
-                .keyboardShortcut("a", modifiers: [.command, .shift])
-
-                // Microphone button for voice input
-                AudioRecorderButton { transcribedText in
-                    // Append transcribed text to input (add space if needed)
-                    if text.isEmpty {
-                        text = transcribedText
-                    } else if text.hasSuffix(" ") || text.hasSuffix("\n") {
-                        text += transcribedText
-                    } else {
-                        text += " " + transcribedText
+                // Attachment button (hidden when recording)
+                if !isAudioRecording {
+                    Button(action: openFilePicker) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.secondary)
                     }
+                    .buttonStyle(.plain)
+                    .help("Add image or PDF (⌘⇧A)")
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
                 }
 
-                // Custom text input - Now includes internal ScrollView logic
-                BareTextView(
-                    text: $text,
-                    height: $textViewHeight,
-                    minHeight: minHeight,
-                    maxHeight: maxHeight,
-                    placeholder: "Message...",
-                    onSubmit: {
+                // Microphone button / Recording view - single instance that expands
+                AudioRecorderButton(
+                    onTranscriptionComplete: { transcribedText in
+                        if text.isEmpty {
+                            text = transcribedText
+                        } else if text.hasSuffix(" ") || text.hasSuffix("\n") {
+                            text += transcribedText
+                        } else {
+                            text += " " + transcribedText
+                        }
+                    },
+                    isExpanded: $isAudioRecording
+                )
+
+                // Text input and send button (hidden when recording)
+                if !isAudioRecording {
+                    // Custom text input - Now includes internal ScrollView logic
+                    BareTextView(
+                        text: $text,
+                        height: $textViewHeight,
+                        minHeight: minHeight,
+                        maxHeight: maxHeight,
+                        placeholder: "Message...",
+                        onSubmit: {
+                            if canSend {
+                                onSend()
+                            }
+                        }
+                    )
+                    .frame(height: textViewHeight)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(
+                                isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.2),
+                                lineWidth: isDropTargeted ? 2 : 1
+                            )
+                    )
+
+                    // Send button
+                    Button(action: {
                         if canSend {
                             onSend()
                         }
+                    }) {
+                        Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(canSend || isLoading ? Color.accentColor : Color.secondary.opacity(0.5))
+                            .contentTransition(.symbolEffect(.replace))
                     }
-                )
-                .frame(height: textViewHeight)
-                .background(Color(nsColor: .textBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.2),
-                            lineWidth: isDropTargeted ? 2 : 1
-                        )
-                )
-
-                // Send button
-                Button(action: {
-                    if canSend {
-                        onSend()
-                    }
-                }) {
-                    Image(systemName: isLoading ? "stop.circle.fill" : "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(canSend || isLoading ? Color.accentColor : Color.secondary.opacity(0.5))
-                        .contentTransition(.symbolEffect(.replace))
+                    .buttonStyle(.plain)
+                    .disabled(!canSend && !isLoading)
+                    .help(isLoading ? "Stop generating" : "Send message (↩)")
                 }
-                .buttonStyle(.plain)
-                .disabled(!canSend && !isLoading)
-                .help(isLoading ? "Stop generating" : "Send message (↩)")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusMessageInput)) { _ in

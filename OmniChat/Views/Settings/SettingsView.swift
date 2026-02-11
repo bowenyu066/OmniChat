@@ -301,6 +301,26 @@ struct AutoSaveAPIKeyRow: View {
 
 struct GeneralSettingsView: View {
     @AppStorage("default_model") private var defaultModel = "gpt-4o"
+    @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
+    @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
+    @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
+
+    private var bubbleColor: Color {
+        Color(red: bubbleRed, green: bubbleGreen, blue: bubbleBlue)
+    }
+
+    private var bubbleColorBinding: Binding<Color> {
+        Binding(
+            get: { bubbleColor },
+            set: { newColor in
+                if let components = NSColor(newColor).usingColorSpace(.deviceRGB) {
+                    bubbleRed = components.redComponent
+                    bubbleGreen = components.greenComponent
+                    bubbleBlue = components.blueComponent
+                }
+            }
+        )
+    }
     @ObservedObject private var updateService = UpdateCheckService.shared
     @State private var autoCheckEnabled: Bool = UserDefaults.standard.autoCheckForUpdates
     @State private var checkFrequency: String = UserDefaults.standard.updateCheckFrequency
@@ -313,6 +333,13 @@ struct GeneralSettingsView: View {
                         Text(model.displayName).tag(model.rawValue)
                     }
                 }
+            }
+
+            Section("Appearance") {
+                ColorPicker("Message bubble color", selection: bubbleColorBinding, supportsOpacity: false)
+                Text("Changes the color of your outgoing message bubbles.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Updates") {
