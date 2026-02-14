@@ -6,6 +6,7 @@ final class OpenAIService: APIServiceProtocol {
 
     private let keychainService: KeychainService
     private let baseURL = "https://api.openai.com/v1/chat/completions"
+    private let reasoningEffortKey = "openai_reasoning_effort"
 
     init(keychainService: KeychainService = .shared) {
         self.keychainService = keychainService
@@ -94,8 +95,7 @@ final class OpenAIService: APIServiceProtocol {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Add reasoning_effort for GPT-5.2 (default to "medium" for balanced performance)
-        let reasoningEffort: String? = (model.rawValue == "gpt-5.2") ? "medium" : nil
+        let reasoningEffort = effectiveReasoningEffort(for: model)
 
         // Convert messages to OpenAI format
         let openAIMessages = messages.map { convertToOpenAIFormat($0) }
@@ -113,6 +113,48 @@ final class OpenAIService: APIServiceProtocol {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return request
+    }
+
+    private func effectiveReasoningEffort(for model: AIModel) -> String? {
+        guard model.supportsReasoningEffort else { return nil }
+
+        let selected = OpenAIReasoningEffort(
+            rawValue: UserDefaults.standard.string(forKey: reasoningEffortKey) ?? ""
+        ) ?? .auto
+
+        guard selected != .auto else { return nil } // Let API choose defaults
+
+        if model.supportsXHighReasoningEffort {
+            switch selected {
+            case .none:
+                return "none"
+            case .low:
+                return "medium" // GPT-5.2-pro does not expose "low"; map to nearest valid tier
+            case .medium:
+                return "medium"
+            case .high:
+                return "high"
+            case .xhigh:
+                return "xhigh"
+            case .auto:
+                return nil
+            }
+        } else {
+            switch selected {
+            case .none:
+                return "none"
+            case .low:
+                return "low"
+            case .medium:
+                return "medium"
+            case .high:
+                return "high"
+            case .xhigh:
+                return "high" // xhigh is not available for non-pro GPT-5 models
+            case .auto:
+                return nil
+            }
+        }
     }
 
     private func convertToOpenAIFormat(_ message: ChatMessage) -> [String: Any] {

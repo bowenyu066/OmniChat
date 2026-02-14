@@ -2,6 +2,29 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.4.0-beta (2026-02-14) - Adaptive RAG, GPT-5 Controls, and Docs Refresh
+
+**Added:**
+- Adaptive RAG retrieval strategy with mixed full-conversation and snippet context packing
+- Per-response "Context Used" snapshot inspector for time context, memories, RAG, and workspace snippets
+- Expanded OpenAI model lineup: `gpt-5.2-pro`, `gpt-5.2`, `gpt-5.1`, `gpt-5`, `gpt-5-mini`, `gpt-4.1`, `gpt-4o`
+- Inline GPT-5 reasoning-effort selector in chat header (contextual model-aware control)
+- Comprehensive model pricing table in Settings for OpenAI, Anthropic, and Gemini
+- Updated docs landing page with richer feature highlights and install guidance for macOS Gatekeeper flows
+
+**Improved:**
+- RAG context quality by dynamically scaling context count based on relevance signals
+- RAG retrieval coverage with wider fetch windows and stronger deduplication/selection logic
+- Prompt-construction observability with structured context snapshots persisted on assistant turns
+- Download UX on docs site with automatic "latest release" link resolution
+
+**Fixed:**
+- Context inspector collapse behavior that immediately hid details after opening
+- Repeated duplicate conversation entries in RAG prompt context assembly
+- Background embedding pipeline reliability issues that could skip indexing on transient failures
+
+---
+
 ## v0.3.3-beta (2026-02-11) - Chat Import, Branching, and Hybrid Search
 
 **Added:**

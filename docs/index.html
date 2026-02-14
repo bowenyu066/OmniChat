@@ -3,19 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniChat - All Your AI, One Home</title>
-    <meta name="description" content="A native macOS app that unifies ChatGPT, Claude, and Gemini. Your conversations and memories stay local.">
+    <title>OmniChat - Native macOS AI Workspace</title>
+    <meta name="description" content="OmniChat is a native macOS app for ChatGPT, Claude, and Gemini with local-first memory, RAG, branching, and workspace context.">
     <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/bowenyu066/OmniChat/main/OmniChat/Resources/new_icon-128.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-primary: #0a0a0b;
-            --bg-secondary: #141416;
-            --bg-card: #1c1c1f;
-            --text-primary: #f5f5f7;
-            --text-secondary: #a1a1a6;
-            --accent: #6366f1;
-            --accent-hover: #818cf8;
-            --border: #2a2a2e;
+            --bg: #070b12;
+            --bg-soft: #0f1624;
+            --panel: #141d2f;
+            --panel-elevated: #1a2740;
+            --text: #f4f7ff;
+            --muted: #9db0d7;
+            --line: #2a3a5a;
+            --accent: #45b6ff;
+            --accent-2: #34d399;
+            --danger-soft: #3f1f2a;
         }
 
         * {
@@ -24,281 +29,367 @@
             box-sizing: border-box;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-            min-height: 100vh;
+            font-family: "IBM Plex Sans", sans-serif;
+            background:
+                radial-gradient(1200px 550px at 20% -10%, rgba(69, 182, 255, 0.22), transparent 60%),
+                radial-gradient(900px 450px at 90% 10%, rgba(52, 211, 153, 0.18), transparent 55%),
+                var(--bg);
+            color: var(--text);
+            line-height: 1.65;
         }
 
         .container {
-            max-width: 1000px;
+            width: min(1120px, 92vw);
             margin: 0 auto;
-            padding: 0 24px;
         }
 
-        /* Header */
+        .fade-up {
+            opacity: 0;
+            transform: translateY(14px);
+            animation: fadeUp 0.6s ease forwards;
+        }
+
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
         header {
-            padding: 20px 0;
-            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            backdrop-filter: blur(8px);
+            background: rgba(7, 11, 18, 0.76);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
         }
 
         nav {
+            height: 74px;
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: space-between;
         }
 
         .logo {
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 12px;
             text-decoration: none;
-            color: var(--text-primary);
+            color: var(--text);
         }
 
         .logo img {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(69, 182, 255, 0.35);
         }
 
         .logo span {
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-family: "Sora", sans-serif;
+            font-size: 1.12rem;
+            font-weight: 650;
+            letter-spacing: 0.01em;
         }
 
         .nav-links {
             display: flex;
-            gap: 24px;
+            align-items: center;
+            gap: 22px;
         }
 
         .nav-links a {
-            color: var(--text-secondary);
+            color: var(--muted);
             text-decoration: none;
             font-size: 0.95rem;
-            transition: color 0.2s;
+            transition: color 0.2s ease;
         }
 
         .nav-links a:hover {
-            color: var(--text-primary);
+            color: var(--text);
         }
 
-        /* Hero */
+        .nav-cta {
+            padding: 9px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(69, 182, 255, 0.45);
+            color: var(--text) !important;
+            background: rgba(69, 182, 255, 0.14);
+            font-weight: 600;
+        }
+
         .hero {
-            padding: 80px 0 60px;
-            text-align: center;
+            padding: 96px 0 64px;
         }
 
-        .hero-poetry {
-            max-width: 700px;
-            margin: 0 auto 48px;
-            font-size: 1.15rem;
-            color: var(--text-secondary);
-            line-height: 1.9;
+        .hero-grid {
+            display: grid;
+            gap: 30px;
+            grid-template-columns: 1.2fr 0.8fr;
+            align-items: center;
         }
 
-        .hero-poetry p {
-            margin-bottom: 8px;
-        }
-
-        .hero-poetry strong {
-            color: var(--text-primary);
-        }
-
-        .hero-poetry em {
-            color: var(--accent);
-            font-style: normal;
-        }
-
-        .hero h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: #b7cbf6;
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(183, 203, 246, 0.26);
+            background: rgba(26, 39, 64, 0.65);
             margin-bottom: 16px;
-            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
 
-        .hero-tagline {
-            font-size: 1.25rem;
-            color: var(--text-secondary);
-            margin-bottom: 40px;
+        h1 {
+            font-family: "Sora", sans-serif;
+            font-weight: 800;
+            font-size: clamp(2.15rem, 5vw, 4rem);
+            line-height: 1.08;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
         }
 
-        .hero-buttons {
+        .hero-subtitle {
+            color: var(--muted);
+            font-size: clamp(1.02rem, 2vw, 1.2rem);
+            max-width: 760px;
+            margin-bottom: 28px;
+        }
+
+        .hero-actions {
             display: flex;
-            gap: 16px;
-            justify-content: center;
+            align-items: center;
             flex-wrap: wrap;
+            gap: 12px;
         }
 
         .btn {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
-            padding: 14px 28px;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 500;
             text-decoration: none;
-            transition: all 0.2s;
+            border-radius: 12px;
+            padding: 12px 18px;
+            font-weight: 600;
+            transition: 0.2s ease;
         }
 
         .btn-primary {
-            background: var(--accent);
-            color: white;
+            background: linear-gradient(135deg, var(--accent), #5f9fff);
+            color: #071224;
         }
 
         .btn-primary:hover {
-            background: var(--accent-hover);
-            transform: translateY(-2px);
+            transform: translateY(-1px);
+            filter: brightness(1.05);
         }
 
-        .btn-secondary {
-            background: var(--bg-card);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
+        .btn-ghost {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--line);
         }
 
-        .btn-secondary:hover {
-            background: var(--bg-secondary);
-            border-color: var(--text-secondary);
+        .btn-ghost:hover {
+            border-color: #4a6798;
+            background: rgba(255, 255, 255, 0.04);
         }
 
-        .btn svg {
-            width: 20px;
-            height: 20px;
-        }
-
-        /* Features */
-        .features {
-            padding: 80px 0;
-        }
-
-        .section-title {
-            text-align: center;
-            font-size: 2rem;
-            margin-bottom: 48px;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-        }
-
-        .feature-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 28px;
-            transition: transform 0.2s, border-color 0.2s;
-        }
-
-        .feature-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--accent);
-        }
-
-        .feature-icon {
-            width: 48px;
-            height: 48px;
-            background: var(--accent);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 16px;
-            font-size: 1.5rem;
-        }
-
-        .feature-card h3 {
-            font-size: 1.15rem;
-            margin-bottom: 8px;
-        }
-
-        .feature-card p {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-        }
-
-        /* Models */
-        .models {
-            padding: 60px 0;
-            background: var(--bg-secondary);
-            border-top: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-        }
-
-        .models-list {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 32px;
-            margin-top: 32px;
-        }
-
-        .model-group {
-            text-align: center;
-        }
-
-        .model-group h4 {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 12px;
-        }
-
-        .model-group ul {
-            list-style: none;
-        }
-
-        .model-group li {
-            color: var(--text-primary);
-            padding: 4px 0;
-        }
-
-        /* Requirements */
-        .requirements {
-            padding: 60px 0;
-            text-align: center;
-        }
-
-        .requirements-box {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 32px;
-            display: inline-block;
-        }
-
-        .requirements-box p {
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-        }
-
-        .requirements-box strong {
-            color: var(--text-primary);
-        }
-
-        /* Footer */
-        footer {
-            padding: 40px 0;
-            border-top: 1px solid var(--border);
-            text-align: center;
-        }
-
-        footer p {
-            color: var(--text-secondary);
+        .version-text {
+            color: var(--muted);
             font-size: 0.9rem;
         }
 
+        .status-card {
+            background: linear-gradient(180deg, rgba(26, 39, 64, 0.95), rgba(20, 29, 47, 0.95));
+            border: 1px solid rgba(157, 176, 215, 0.25);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .status-card h3 {
+            font-family: "Sora", sans-serif;
+            font-size: 1.02rem;
+            margin-bottom: 8px;
+        }
+
+        .status-card p {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .status-list {
+            list-style: none;
+            margin-top: 14px;
+            display: grid;
+            gap: 9px;
+        }
+
+        .status-list li {
+            font-size: 0.92rem;
+            color: #d4e2ff;
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+        }
+
+        .status-list li::before {
+            content: "-";
+            color: var(--accent-2);
+        }
+
+        section {
+            padding: 42px 0;
+        }
+
+        .section-title {
+            font-family: "Sora", sans-serif;
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            margin-bottom: 10px;
+        }
+
+        .section-lead {
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .feature {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .feature h3 {
+            font-family: "Sora", sans-serif;
+            font-size: 1rem;
+            margin-bottom: 6px;
+        }
+
+        .feature p {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .install-wrap {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 20px;
+            display: grid;
+            gap: 20px;
+        }
+
+        .install-steps {
+            display: grid;
+            gap: 10px;
+        }
+
+        .step {
+            display: grid;
+            grid-template-columns: 34px 1fr;
+            gap: 12px;
+            align-items: start;
+        }
+
+        .step-num {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #061427;
+            background: linear-gradient(135deg, var(--accent), #79e7c1);
+        }
+
+        .step-body h4 {
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .step-body p {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .warning-box {
+            border: 1px solid #754454;
+            background: linear-gradient(180deg, rgba(63, 31, 42, 0.8), rgba(30, 15, 20, 0.8));
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .warning-box h4 {
+            margin-bottom: 6px;
+        }
+
+        .warning-box p,
+        .warning-box li {
+            color: #f2d6df;
+            font-size: 0.9rem;
+        }
+
+        .warning-box ul {
+            margin: 6px 0 0 20px;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .meta-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        .meta-card h4 {
+            font-family: "Sora", sans-serif;
+            font-size: 0.98rem;
+            margin-bottom: 6px;
+        }
+
+        .meta-card p {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        footer {
+            margin-top: 24px;
+            padding: 30px 0 40px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        footer p {
+            color: var(--muted);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
         footer a {
-            color: var(--accent);
+            color: #98ceff;
             text-decoration: none;
         }
 
@@ -306,18 +397,29 @@
             text-decoration: underline;
         }
 
-        /* Responsive */
-        @media (max-width: 640px) {
-            .hero h1 {
-                font-size: 2.5rem;
+        @media (max-width: 940px) {
+            .hero-grid {
+                grid-template-columns: 1fr;
             }
 
-            .hero-poetry {
-                font-size: 1rem;
+            .feature-grid,
+            .meta-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+        }
 
-            .nav-links {
+        @media (max-width: 700px) {
+            .nav-links a:not(.nav-cta) {
                 display: none;
+            }
+
+            .hero {
+                padding-top: 70px;
+            }
+
+            .feature-grid,
+            .meta-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -326,14 +428,15 @@
     <header>
         <div class="container">
             <nav>
-                <a href="#" class="logo">
-                    <img src="https://raw.githubusercontent.com/bowenyu066/OmniChat/main/OmniChat/Resources/new_icon-128.png" alt="OmniChat">
+                <a class="logo" href="#">
+                    <img src="https://raw.githubusercontent.com/bowenyu066/OmniChat/main/OmniChat/Resources/new_icon-128.png" alt="OmniChat logo">
                     <span>OmniChat</span>
                 </a>
                 <div class="nav-links">
                     <a href="#features">Features</a>
+                    <a href="#install">Install</a>
                     <a href="https://github.com/bowenyu066/OmniChat">GitHub</a>
-                    <a href="https://github.com/bowenyu066/OmniChat/releases/download/v0.3.3-beta/OmniChat-v0.3.3-beta.dmg">Download (dmg)</a>
+                    <a data-latest-download class="nav-cta" href="https://github.com/bowenyu066/OmniChat/releases/latest">Download</a>
                 </div>
             </nav>
         </div>
@@ -341,102 +444,151 @@
 
     <main>
         <section class="hero">
-            <div class="container">
-                <h1>OmniChat</h1>
-                <p class="hero-tagline">All your AI, one home. Your data stays with you.</p>
+            <div class="container hero-grid">
+                <div class="fade-up" style="animation-delay: 0.05s;">
+                    <span class="hero-badge">Native macOS app | Local-first context</span>
+                    <h1>All your AI, one serious workspace.</h1>
+                    <p class="hero-subtitle">
+                        ChatGPT, Claude, and Gemini in one app with memory, hybrid semantic recall, workspace file context,
+                        branching edits, and real-time model switching.
+                    </p>
+                    <div class="hero-actions">
+                        <a data-latest-download class="btn btn-primary" href="https://github.com/bowenyu066/OmniChat/releases/latest">Download for macOS</a>
+                        <a class="btn btn-ghost" href="https://github.com/bowenyu066/OmniChat">View Source</a>
+                        <span class="version-text" data-download-status>Latest release detected automatically.</span>
+                    </div>
+                </div>
+                <aside class="status-card fade-up" style="animation-delay: 0.15s;">
+                    <h3>What is inside now</h3>
+                    <p>Production-minded UX additions are already live.</p>
+                    <ul class="status-list">
+                        <li>ChatGPT import with dedup + image recovery</li>
+                        <li>Hybrid search: keyword and semantic</li>
+                        <li>Context inspector + time-context toggle</li>
+                        <li>Audio recording waveform + one-click flow</li>
+                        <li>User-message edit branching with sibling navigation</li>
+                        <li>Auto-update checks via GitHub releases</li>
+                    </ul>
+                </aside>
+            </div>
+        </section>
 
-                <div class="hero-buttons">
-                    <a href="https://github.com/bowenyu066/OmniChat/releases/download/v0.3.3-beta/OmniChat-v0.3.3-beta.dmg" class="btn btn-primary">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Download for macOS
-                    </a>
-                    <a href="https://github.com/bowenyu066/OmniChat" class="btn btn-secondary">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                        </svg>
-                        View on GitHub
-                    </a>
+        <section id="features">
+            <div class="container">
+                <h2 class="section-title">Key capabilities</h2>
+                <p class="section-lead">Focused set of features for daily heavy usage, without cloud lock-in.</p>
+                <div class="feature-grid">
+                    <article class="feature fade-up" style="animation-delay: 0.02s;">
+                        <h3>Multi-provider in one thread</h3>
+                        <p>Switch among OpenAI, Anthropic, and Google models without changing apps.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.05s;">
+                        <h3>Hybrid history search</h3>
+                        <p>Keyword matches first, then semantic retrieval over embedded messages.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.08s;">
+                        <h3>RAG context routing</h3>
+                        <p>High-confidence conversations can be injected in full; others as concise snippets.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.11s;">
+                        <h3>Import from ChatGPT exports</h3>
+                        <p>JSON/ZIP import, dedup logic, image attachment handling, and reset/cleanup controls.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.14s;">
+                        <h3>Memory + workspace context</h3>
+                        <p>Per-conversation memory configuration and workspace snippet retrieval from indexed files.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.17s;">
+                        <h3>Advanced response controls</h3>
+                        <p>Retry, model switch, branch from message, and edit user messages with branch tracking.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.20s;">
+                        <h3>Voice + readability</h3>
+                        <p>Text-to-speech for assistant output and smoother audio capture with live waveform.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.23s;">
+                        <h3>Privacy and security</h3>
+                        <p>Data stored locally on Mac, API keys in Keychain, app sandbox enabled.</p>
+                    </article>
+                    <article class="feature fade-up" style="animation-delay: 0.26s;">
+                        <h3>Live update notification</h3>
+                        <p>In-app update banner + release notes modal tied to GitHub release feed.</p>
+                    </article>
                 </div>
             </div>
         </section>
 
-        <section class="features" id="features">
+        <section id="install">
             <div class="container">
-                <h2 class="section-title">Why OmniChat?</h2>
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon">🔄</div>
-                        <h3>Multi-Provider</h3>
-                        <p>GPT-5.2, Claude Opus 4.5, Gemini 3 Pro—switch between them seamlessly in one app.</p>
+                <h2 class="section-title">Install on macOS</h2>
+                <p class="section-lead">Standard internet-download flow, including Apple security prompts.</p>
+                <div class="install-wrap">
+                    <div class="install-steps">
+                        <div class="step">
+                            <span class="step-num">1</span>
+                            <div class="step-body">
+                                <h4>Download the latest DMG</h4>
+                                <p>Use the button below. It always resolves to the newest published release.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">2</span>
+                            <div class="step-body">
+                                <h4>Open DMG and move app to Applications</h4>
+                                <p>Drag <strong>OmniChat.app</strong> into your <strong>Applications</strong> folder.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">3</span>
+                            <div class="step-body">
+                                <h4>First launch</h4>
+                                <p>Open OmniChat from Applications. You may need to right-click and choose <strong>Open</strong> once.</p>
+                            </div>
+                        </div>
+                        <div class="step">
+                            <span class="step-num">4</span>
+                            <div class="step-body">
+                                <h4>If blocked by Gatekeeper</h4>
+                                <p>Go to <strong>System Settings -&gt; Privacy &amp; Security</strong>, find OmniChat, click <strong>Open Anyway</strong>, then confirm <strong>Open</strong>.</p>
+                            </div>
+                        </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🧠</div>
-                        <h3>Memory System</h3>
-                        <p>Your knowledge persists across conversations. No more repeating yourself to AI.</p>
+
+                    <div class="warning-box">
+                        <h4>Apple security warning is normal for unsigned internet apps</h4>
+                        <p>If you see "cannot be opened because Apple cannot check it for malicious software" or "developer cannot be verified", use the Privacy &amp; Security override above.</p>
+                        <ul>
+                            <li>After first trust approval, next launches are normal.</li>
+                            <li>Only install from the official GitHub repository.</li>
+                        </ul>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📎</div>
-                        <h3>Multimodal</h3>
-                        <p>Drag-drop images and PDFs into any chat. All providers support attachments.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">💾</div>
-                        <h3>Local Storage</h3>
-                        <p>All conversations stored on your Mac. Your data never leaves your device.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">📁</div>
-                        <h3>Workspaces</h3>
-                        <p>Index your codebases for context-aware coding assistance.</p>
-                    </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🔐</div>
-                        <h3>Secure</h3>
-                        <p>Touch ID protection. API keys in Keychain. App Sandbox enabled.</p>
+
+                    <div class="hero-actions">
+                        <a data-latest-download class="btn btn-primary" href="https://github.com/bowenyu066/OmniChat/releases/latest">Download latest DMG</a>
+                        <a class="btn btn-ghost" href="https://github.com/bowenyu066/OmniChat/releases/latest">Open release notes</a>
+                        <span class="version-text">Resolved tag: <strong data-latest-version>latest</strong></span>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section class="models">
-            <div class="container">
-                <h2 class="section-title">Supported Models</h2>
-                <div class="models-list">
-                    <div class="model-group">
-                        <h4>OpenAI</h4>
-                        <ul>
-                            <li>GPT-5.2</li>
-                            <li>GPT-5 Mini</li>
-                            <li>GPT-4o</li>
-                        </ul>
-                    </div>
-                    <div class="model-group">
-                        <h4>Anthropic</h4>
-                        <ul>
-                            <li>Claude Opus 4.5</li>
-                            <li>Claude Sonnet 4.5</li>
-                            <li>Claude Haiku 4.5</li>
-                        </ul>
-                    </div>
-                    <div class="model-group">
-                        <h4>Google</h4>
-                        <ul>
-                            <li>Gemini 3 Pro</li>
-                            <li>Gemini 3 Flash</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section class="requirements">
+        <section>
             <div class="container">
                 <h2 class="section-title">Requirements</h2>
-                <div class="requirements-box">
-                    <p><strong>macOS 14.0</strong> or later</p>
-                    <p>Bring your own API keys from <a href="https://platform.openai.com/api-keys">OpenAI</a>, <a href="https://console.anthropic.com/">Anthropic</a>, or <a href="https://aistudio.google.com/">Google AI</a></p>
+                <p class="section-lead">Bring your own API credentials. App runs fully on macOS.</p>
+                <div class="meta-grid">
+                    <article class="meta-card">
+                        <h4>Platform</h4>
+                        <p>macOS 14.0 or later</p>
+                    </article>
+                    <article class="meta-card">
+                        <h4>API providers</h4>
+                        <p>OpenAI, Anthropic, Google AI (any subset works)</p>
+                    </article>
+                    <article class="meta-card">
+                        <h4>Licensing</h4>
+                        <p>Open source under MIT, source available on GitHub</p>
+                    </article>
                 </div>
             </div>
         </section>
@@ -444,8 +596,71 @@
 
     <footer>
         <div class="container">
-            <p>Made with care. <a href="https://github.com/bowenyu066/OmniChat">Open source</a> under MIT License.</p>
+            <p>
+                OmniChat by <a href="https://github.com/bowenyu066/OmniChat">bowenyu066</a>.
+                For issues and feature requests, open a GitHub issue.
+            </p>
         </div>
     </footer>
+
+    <script>
+        (function bindLatestDownloadLinks() {
+            const repo = "bowenyu066/OmniChat";
+            const fallbackURL = "https://github.com/bowenyu066/OmniChat/releases/latest";
+
+            const downloadLinks = document.querySelectorAll("[data-latest-download]");
+            const versionTargets = document.querySelectorAll("[data-latest-version]");
+            const statusTarget = document.querySelector("[data-download-status]");
+
+            async function resolveLatest() {
+                try {
+                    const response = await fetch("https://api.github.com/repos/" + repo + "/releases?per_page=20", {
+                        headers: {
+                            "Accept": "application/vnd.github+json"
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("GitHub release lookup failed");
+                    }
+
+                    const releases = await response.json();
+                    const release = (Array.isArray(releases) ? releases : []).find(function (item) {
+                        return item && item.draft === false;
+                    });
+                    if (!release) {
+                        throw new Error("No releases found");
+                    }
+
+                    const assets = Array.isArray(release.assets) ? release.assets : [];
+                    const dmg = assets.find(function (asset) {
+                        return typeof asset.name === "string" && asset.name.toLowerCase().endsWith(".dmg");
+                    });
+
+                    const resolvedURL = (dmg && dmg.browser_download_url) || release.html_url || fallbackURL;
+                    const tag = release.tag_name || "latest";
+
+                    downloadLinks.forEach(function (link) {
+                        link.setAttribute("href", resolvedURL);
+                    });
+                    versionTargets.forEach(function (target) {
+                        target.textContent = tag;
+                    });
+                    if (statusTarget) {
+                        statusTarget.textContent = "Latest detected: " + tag;
+                    }
+                } catch (error) {
+                    downloadLinks.forEach(function (link) {
+                        link.setAttribute("href", fallbackURL);
+                    });
+                    if (statusTarget) {
+                        statusTarget.textContent = "Latest release link active";
+                    }
+                }
+            }
+
+            resolveLatest();
+        })();
+    </script>
 </body>
 </html>

@@ -7,6 +7,35 @@ enum MessageRole: String, Codable {
     case system
 }
 
+struct ResponseContextSnapshot: Codable {
+    let generatedAt: Date
+    let includesTimeContext: Bool
+    let memoryItems: [ResponseContextMemoryItem]
+    let ragItems: [ResponseContextRAGItem]
+    let workspaceItems: [ResponseContextWorkspaceItem]
+
+    var hasAnyContext: Bool {
+        includesTimeContext || !memoryItems.isEmpty || !ragItems.isEmpty || !workspaceItems.isEmpty
+    }
+}
+
+struct ResponseContextMemoryItem: Codable, Hashable {
+    let id: UUID
+    let type: String
+    let title: String
+}
+
+struct ResponseContextRAGItem: Codable, Hashable {
+    let conversationTitle: String
+    let summary: String
+    let similarity: Double
+}
+
+struct ResponseContextWorkspaceItem: Codable, Hashable {
+    let citation: String
+    let reason: String
+}
+
 @Model
 final class Message {
     var id: UUID
@@ -36,6 +65,9 @@ final class Message {
 
     // Import deduplication: stores original message ID from import source
     var importMessageId: String?
+
+    // Persisted snapshot of which context sources were injected for this assistant response
+    var contextSnapshotData: Data?
 
     init(id: UUID = UUID(), role: MessageRole, content: String, timestamp: Date = Date(), modelUsed: String? = nil, attachments: [Attachment] = []) {
         self.id = id
@@ -81,5 +113,19 @@ final class Message {
     /// Check if this message has any siblings (alternate responses)
     var hasSiblings: Bool {
         siblingGroupId != nil
+    }
+
+    var contextSnapshot: ResponseContextSnapshot? {
+        get {
+            guard let data = contextSnapshotData else { return nil }
+            return try? JSONDecoder().decode(ResponseContextSnapshot.self, from: data)
+        }
+        set {
+            contextSnapshotData = try? JSONEncoder().encode(newValue)
+        }
+    }
+
+    var hasContextSnapshot: Bool {
+        contextSnapshot?.hasAnyContext == true
     }
 }

@@ -30,6 +30,7 @@ struct ChatView: View {
     @State private var activeStreamID: UUID?
     @State private var activeStreamScrollEvents = 0
     @State private var activeStreamUIUpdates = 0
+    @State private var expandedContextMessageID: UUID?
 
     // Streaming content buffer - avoids SwiftData updates during streaming
     // This is updated frequently, while SwiftData is only updated when streaming completes
@@ -39,6 +40,11 @@ struct ChatView: View {
     @State private var lastScrollUpdate = Date.distantPast
 
     var onBranchConversation: ((Conversation) -> Void)?
+
+    private struct SystemPromptBuildResult {
+        let prompt: String
+        let contextSnapshot: ResponseContextSnapshot
+    }
 
     private let apiServiceFactory = APIServiceFactory()
 
@@ -114,7 +120,20 @@ struct ChatView: View {
                     onSwitchModel: message.role == .assistant ? { newModel in switchModel(for: message, to: newModel) } : nil,
                     onBranch: message.role == .assistant ? { branchFromMessage(message) } : nil,
                     onSwitchSibling: siblings.count > 1 ? { sibling in switchToSibling(sibling) } : nil,
-                    onEdit: message.role == .user ? { newContent in editUserMessage(message, newContent: newContent) } : nil
+                    onEdit: message.role == .user ? { newContent in editUserMessage(message, newContent: newContent) } : nil,
+                    isContextInspectorVisible: expandedContextMessageID == message.id,
+                    onShowContextInspector: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            expandedContextMessageID = message.id
+                        }
+                    },
+                    onCloseContextInspector: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            if expandedContextMessageID == message.id {
+                                expandedContextMessageID = nil
+                            }
+                        }
+                    }
                 )
                 .id(message.id)
             }
@@ -253,12 +272,16 @@ struct ChatView: View {
         sortedMessagesCache = result
     }
 
-    private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") async -> String {
+    private func getSystemPrompt(for provider: AIProvider, userPrompt: String = "") async -> SystemPromptBuildResult {
         let startTime = Date()
 
         var prompt = """
         You are a helpful AI assistant. Keep responses clear and concise.
         """
+
+        var contextMemoryItems: [ResponseContextMemoryItem] = []
+        var contextRAGItems: [ResponseContextRAGItem] = []
+        var contextWorkspaceItems: [ResponseContextWorkspaceItem] = []
 
         // Inject current date/time if enabled
         if includeTimeContext {
@@ -277,6 +300,13 @@ struct ChatView: View {
 
             for memory in includedMemories {
                 prompt += "\n### \(memory.type.rawValue): \(memory.title)\n\(memory.body)\n"
+                contextMemoryItems.append(
+                    ResponseContextMemoryItem(
+                        id: memory.id,
+                        type: memory.type.rawValue,
+                        title: memory.title
+                    )
+                )
             }
         }
         let memoryMs = Int(Date().timeIntervalSince(memoryStartTime) * 1000)
@@ -297,6 +327,14 @@ struct ChatView: View {
                 if !ragResults.isEmpty {
                     prompt += "\n\n" + RAGService.formatResultsForPrompt(ragResults)
                     logger.debug("RAG: Added \(ragResults.count) relevant past conversations to context")
+
+                    contextRAGItems = ragResults.map { result in
+                        ResponseContextRAGItem(
+                            conversationTitle: result.conversationTitle,
+                            summary: result.summary,
+                            similarity: result.similarity
+                        )
+                    }
                 }
             } catch {
                 logger.warning("RAG retrieval failed: \(error.localizedDescription)")
@@ -321,6 +359,12 @@ struct ChatView: View {
 
                 for snippet in fileSnippets {
                     prompt += "\n### \(snippet.citation)\n```\n\(snippet.content)\n```\n"
+                    contextWorkspaceItems.append(
+                        ResponseContextWorkspaceItem(
+                            citation: snippet.citation,
+                            reason: snippet.reason
+                        )
+                    )
                 }
 
                 prompt += "\nWhen referencing these files, always use the format `file.swift:line` for clarity.\n"
@@ -331,7 +375,15 @@ struct ChatView: View {
         let totalMs = Int(Date().timeIntervalSince(startTime) * 1000)
         perfLog("PERF_SYSTEM_PROMPT total_ms=\(totalMs) memory_ms=\(memoryMs) rag_ms=\(ragMs) workspace_ms=\(workspaceMs) memories=\(includedMemories.count) rag_results=\(ragResultCount) snippets=\(workspaceSnippetCount) prompt_chars=\(prompt.count)")
 
-        return prompt
+        let snapshot = ResponseContextSnapshot(
+            generatedAt: Date(),
+            includesTimeContext: includeTimeContext,
+            memoryItems: contextMemoryItems,
+            ragItems: contextRAGItems,
+            workspaceItems: contextWorkspaceItems
+        )
+
+        return SystemPromptBuildResult(prompt: prompt, contextSnapshot: snapshot)
     }
 
     /// Returns memories that should be included based on the current config
@@ -485,8 +537,9 @@ struct ChatView: View {
                 .map { ChatMessage(from: $0) }
 
             if !chatMessages.contains(where: { $0.role == "system" }) {
-                let systemPrompt = await getSystemPrompt(for: modelToUse.provider, userPrompt: userMessage.content)
-                chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+                let promptBuild = await getSystemPrompt(for: modelToUse.provider, userPrompt: userMessage.content)
+                assistantMessage.contextSnapshot = promptBuild.contextSnapshot
+                chatMessages.insert(ChatMessage(role: .system, content: promptBuild.prompt), at: 0)
             }
 
             let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
@@ -651,8 +704,9 @@ struct ChatView: View {
         Task {
             // Inject system prompt at the beginning if not present (async for RAG)
             if !chatMessages.contains(where: { $0.role == "system" }) {
-                let systemPrompt = await getSystemPrompt(for: modelToUse.provider, userPrompt: userPrompt)
-                chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+                let promptBuild = await getSystemPrompt(for: modelToUse.provider, userPrompt: userPrompt)
+                assistantMessage.contextSnapshot = promptBuild.contextSnapshot
+                chatMessages.insert(ChatMessage(role: .system, content: promptBuild.prompt), at: 0)
             }
 
             do {
@@ -717,6 +771,7 @@ struct ChatView: View {
                 timestamp: originalMessage.timestamp,
                 modelUsed: originalMessage.modelUsed
             )
+            copiedMessage.contextSnapshotData = originalMessage.contextSnapshotData
 
             // Insert message first
             modelContext.insert(copiedMessage)
@@ -836,8 +891,9 @@ struct ChatView: View {
 
             // Inject system prompt at the beginning if not present (async for RAG)
             if !chatMessages.contains(where: { $0.role == "system" }) {
-                let systemPrompt = await getSystemPrompt(for: modelToUse.provider, userPrompt: userContent)
-                chatMessages.insert(ChatMessage(role: .system, content: systemPrompt), at: 0)
+                let promptBuild = await getSystemPrompt(for: modelToUse.provider, userPrompt: userContent)
+                assistantMessage.contextSnapshot = promptBuild.contextSnapshot
+                chatMessages.insert(ChatMessage(role: .system, content: promptBuild.prompt), at: 0)
             }
 
             let systemPromptBuiltAt = Date()
@@ -1115,6 +1171,11 @@ struct ChatHeaderView: View {
             // Model selector
             ModelSelectorView(selectedModel: $selectedModel)
 
+            // Reasoning effort (only for GPT-5 family, excluding mini/nano)
+            if selectedModel.supportsReasoningEffort {
+                OpenAIReasoningEffortPicker(model: selectedModel)
+            }
+
             // Memory panel toggle
             Button(action: { showMemoryPanel.toggle() }) {
                 Image(systemName: showMemoryPanel ? "brain.fill" : "brain")
@@ -1126,6 +1187,75 @@ struct ChatHeaderView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+}
+
+// MARK: - OpenAI Reasoning Effort Picker
+
+private struct OpenAIReasoningEffortPicker: View {
+    let model: AIModel
+    @AppStorage("openai_reasoning_effort") private var selectedEffortRaw = OpenAIReasoningEffort.auto.rawValue
+
+    private var selectedEffort: OpenAIReasoningEffort {
+        OpenAIReasoningEffort(rawValue: selectedEffortRaw) ?? .auto
+    }
+
+    private var availableEfforts: [OpenAIReasoningEffort] {
+        if model.supportsXHighReasoningEffort {
+            return [.auto, .none, .low, .medium, .high, .xhigh]
+        }
+        return [.auto, .none, .low, .medium, .high]
+    }
+
+    private var shortLabel: String {
+        switch selectedEffort {
+        case .auto: return "Auto"
+        case .none: return "None"
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        case .xhigh: return "xHigh"
+        }
+    }
+
+    var body: some View {
+        Menu {
+            ForEach(availableEfforts) { effort in
+                Button {
+                    selectedEffortRaw = effort.rawValue
+                } label: {
+                    HStack {
+                        Text(effort.displayName)
+                        Spacer()
+                        if effort == selectedEffort {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "brain")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(shortLabel)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.controlBackgroundColor), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.secondary.opacity(0.15), lineWidth: 0.5)
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .help("Reasoning effort for GPT-5 models")
     }
 }
 

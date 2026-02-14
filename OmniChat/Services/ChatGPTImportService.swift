@@ -18,9 +18,12 @@ final class ChatGPTImportService {
 
     // Background embedding task tracking
     private var backgroundEmbeddingTask: Task<Void, Never>?
+    private var deferredEmbeddingRetryTask: Task<Void, Never>?
     var isGeneratingEmbeddings = false
     var embeddingProgressCount = 0
     var embeddingTotalCount = 0
+    private let maxDeferredEmbeddingRetryRounds = 6
+    private let deferredEmbeddingRetryDelayNs: UInt64 = 30_000_000_000
 
     // MARK: - Import Progress & Result
 
@@ -157,7 +160,7 @@ final class ChatGPTImportService {
         if generateEmbeddings && !importedMessages.isEmpty {
             // Get message IDs to embed in background
             let messageIDs = importedMessages.filter { $0.role == .assistant && !$0.content.isEmpty }.map { $0.id }
-            await startBackgroundEmbedding(messageIDs: messageIDs, modelContainer: modelContext.container)
+            startBackgroundEmbedding(messageIDs: messageIDs, modelContainer: modelContext.container)
         }
 
         progressHandler(ImportProgress(
@@ -308,7 +311,7 @@ final class ChatGPTImportService {
         // Phase 4: Queue background embedding generation (optional)
         if generateEmbeddings && !importedMessages.isEmpty {
             let messageIDs = importedMessages.filter { $0.role == .assistant && !$0.content.isEmpty }.map { $0.id }
-            await startBackgroundEmbedding(messageIDs: messageIDs, modelContainer: modelContext.container)
+            startBackgroundEmbedding(messageIDs: messageIDs, modelContainer: modelContext.container)
         }
 
         progressHandler(ImportProgress(
@@ -757,32 +760,136 @@ final class ChatGPTImportService {
 
     // MARK: - Background Embedding Generation
 
+    /// Backfill any imported assistant messages that are still missing embeddings.
+    /// Called at app startup to recover from prior API key absence/cancellation/transient failures.
+    func resumeMissingImportedEmbeddings(
+        modelContext: ModelContext,
+        fetchLimit: Int = 6000
+    ) {
+        guard backgroundEmbeddingTask == nil else { return }
+
+        var descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate<Message> { message in
+                message.embeddingData == nil
+            },
+            sortBy: [SortDescriptor(\Message.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = max(100, fetchLimit)
+
+        let candidates = (try? modelContext.fetch(descriptor)) ?? []
+        guard !candidates.isEmpty else { return }
+
+        let messageIDs = candidates.compactMap { message -> UUID? in
+            guard message.role == .assistant else { return nil }
+            guard !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+
+            let isImported =
+                message.modelUsed == "ChatGPT (imported)" ||
+                (message.conversation?.importSourceId?.hasPrefix("chatgpt:") ?? false)
+
+            return isImported ? message.id : nil
+        }
+
+        guard !messageIDs.isEmpty else { return }
+
+        logger.info("Embedding backfill: queued \(messageIDs.count) imported assistant messages missing embeddings")
+        startBackgroundEmbedding(messageIDs: messageIDs, modelContainer: modelContext.container)
+    }
+
     /// Start background embedding generation for imported messages
-    private func startBackgroundEmbedding(messageIDs: [UUID], modelContainer: ModelContainer) {
-        // Cancel any existing background task
-        backgroundEmbeddingTask?.cancel()
+    private func startBackgroundEmbedding(
+        messageIDs: [UUID],
+        modelContainer: ModelContainer,
+        retryRound: Int = 0
+    ) {
+        guard !messageIDs.isEmpty else { return }
+
+        if backgroundEmbeddingTask != nil {
+            scheduleDeferredEmbeddingRetry(
+                messageIDs: messageIDs,
+                modelContainer: modelContainer,
+                retryRound: max(1, retryRound)
+            )
+            return
+        }
+
+        guard EmbeddingService.shared.isConfigured else {
+            logger.warning("Embedding service not configured, deferring \(messageIDs.count) embeddings")
+            scheduleDeferredEmbeddingRetry(
+                messageIDs: messageIDs,
+                modelContainer: modelContainer,
+                retryRound: retryRound + 1
+            )
+            return
+        }
+
+        deferredEmbeddingRetryTask?.cancel()
+        deferredEmbeddingRetryTask = nil
 
         isGeneratingEmbeddings = true
         embeddingProgressCount = 0
         embeddingTotalCount = messageIDs.count
 
-        logger.info("Starting background embedding for \(messageIDs.count) messages")
+        logger.info("Starting background embedding for \(messageIDs.count) messages (retryRound=\(retryRound))")
 
         backgroundEmbeddingTask = Task.detached(priority: .background) {
-            await Self.performBackgroundEmbedding(
+            let remainingMessageIDs = await Self.performBackgroundEmbedding(
                 messageIDs: messageIDs,
                 modelContainer: modelContainer,
-                onProgress: { count in
+                maxAttemptsPerMessage: 3,
+                onProgress: { processed, total in
                     Task { @MainActor in
-                        ChatGPTImportService.shared.embeddingProgressCount = count
-                    }
-                },
-                onComplete: {
-                    Task { @MainActor in
-                        ChatGPTImportService.shared.isGeneratingEmbeddings = false
+                        ChatGPTImportService.shared.embeddingProgressCount = processed
+                        ChatGPTImportService.shared.embeddingTotalCount = total
                     }
                 }
             )
+
+            await MainActor.run {
+                ChatGPTImportService.shared.backgroundEmbeddingTask = nil
+                ChatGPTImportService.shared.isGeneratingEmbeddings = false
+            }
+
+            if !remainingMessageIDs.isEmpty {
+                await MainActor.run {
+                    ChatGPTImportService.shared.scheduleDeferredEmbeddingRetry(
+                        messageIDs: remainingMessageIDs,
+                        modelContainer: modelContainer,
+                        retryRound: retryRound + 1
+                    )
+                }
+            }
+        }
+    }
+
+    private func scheduleDeferredEmbeddingRetry(
+        messageIDs: [UUID],
+        modelContainer: ModelContainer,
+        retryRound: Int
+    ) {
+        guard !messageIDs.isEmpty else { return }
+        guard retryRound <= maxDeferredEmbeddingRetryRounds else {
+            logger.warning("Embedding retry exhausted after \(self.maxDeferredEmbeddingRetryRounds) rounds; \(messageIDs.count) messages still missing embeddings")
+            return
+        }
+
+        deferredEmbeddingRetryTask?.cancel()
+
+        let dedupedIDs = Array(Set(messageIDs))
+        let delayNs = deferredEmbeddingRetryDelayNs
+        logger.info("Scheduling deferred embedding retry round \(retryRound) for \(dedupedIDs.count) messages")
+
+        deferredEmbeddingRetryTask = Task.detached(priority: .background) {
+            try? await Task.sleep(nanoseconds: delayNs)
+            await MainActor.run {
+                ChatGPTImportService.shared.startBackgroundEmbedding(
+                    messageIDs: dedupedIDs,
+                    modelContainer: modelContainer,
+                    retryRound: retryRound
+                )
+            }
         }
     }
 
@@ -790,27 +897,28 @@ final class ChatGPTImportService {
     private static func performBackgroundEmbedding(
         messageIDs: [UUID],
         modelContainer: ModelContainer,
-        onProgress: @escaping (Int) -> Void,
-        onComplete: @escaping () -> Void
-    ) async {
+        maxAttemptsPerMessage: Int,
+        onProgress: @escaping (_ processed: Int, _ total: Int) -> Void
+    ) async -> [UUID] {
         let embeddingService = EmbeddingService.shared
 
         guard embeddingService.isConfigured else {
-            logger.warning("Embedding service not configured, skipping embeddings")
-            onComplete()
-            return
+            logger.warning("Embedding service not configured, returning all messages for retry")
+            return messageIDs
         }
 
         // Create a new model context for background work
         let context = ModelContext(modelContainer)
         var progressCount = 0
+        let totalCount = messageIDs.count
+        var remainingIDs = Set(messageIDs)
 
         // Process in batches
         let batchSize = 10
         for batchIDs in messageIDs.chunked(into: batchSize) {
             // Check for cancellation
             if Task.isCancelled {
-                logger.info("Background embedding cancelled")
+                logger.info("Background embedding cancelled with \(remainingIDs.count) messages pending")
                 break
             }
 
@@ -820,21 +928,44 @@ final class ChatGPTImportService {
 
                 // Fetch message by ID
                 let descriptor = FetchDescriptor<Message>(predicate: #Predicate { $0.id == messageID })
-                guard let message = try? context.fetch(descriptor).first else { continue }
+                guard let message = try? context.fetch(descriptor).first else {
+                    remainingIDs.remove(messageID)
+                    progressCount += 1
+                    onProgress(progressCount, totalCount)
+                    continue
+                }
 
                 // Skip if already embedded
-                if message.hasEmbedding { continue }
+                if message.hasEmbedding {
+                    remainingIDs.remove(messageID)
+                    progressCount += 1
+                    onProgress(progressCount, totalCount)
+                    continue
+                }
+
+                let content = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !content.isEmpty else {
+                    remainingIDs.remove(messageID)
+                    progressCount += 1
+                    onProgress(progressCount, totalCount)
+                    continue
+                }
 
                 do {
-                    let embedding = try await embeddingService.generateEmbedding(for: message.content)
+                    let embedding = try await generateEmbeddingWithRetry(
+                        content: content,
+                        embeddingService: embeddingService,
+                        maxAttempts: maxAttemptsPerMessage
+                    )
                     message.embeddingVector = embedding
                     message.embeddedAt = Date()
+                    remainingIDs.remove(messageID)
                 } catch {
-                    logger.warning("Failed to generate embedding: \(error.localizedDescription)")
+                    logger.warning("Failed to generate embedding after retries: \(error.localizedDescription)")
                 }
 
                 progressCount += 1
-                onProgress(progressCount)
+                onProgress(progressCount, totalCount)
             }
 
             // Save batch
@@ -844,14 +975,57 @@ final class ChatGPTImportService {
             try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
         }
 
-        logger.info("Background embedding complete: \(progressCount)/\(messageIDs.count)")
-        onComplete()
+        try? context.save()
+
+        if remainingIDs.isEmpty {
+            logger.info("Background embedding complete: \(progressCount)/\(messageIDs.count)")
+        } else {
+            logger.warning("Background embedding partial: \(progressCount)/\(messageIDs.count), remaining=\(remainingIDs.count)")
+        }
+
+        return Array(remainingIDs)
+    }
+
+    private static func generateEmbeddingWithRetry(
+        content: String,
+        embeddingService: EmbeddingService,
+        maxAttempts: Int
+    ) async throws -> [Double] {
+        var attempt = 0
+        var lastError: Error?
+
+        while attempt < maxAttempts {
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+
+            do {
+                return try await embeddingService.generateEmbedding(for: content)
+            } catch {
+                lastError = error
+                attempt += 1
+
+                guard attempt < maxAttempts else { break }
+
+                // Exponential backoff: 0.4s, 0.8s, ...
+                let delayNs = UInt64(400_000_000 * Int(pow(2.0, Double(attempt - 1))))
+                try? await Task.sleep(nanoseconds: delayNs)
+            }
+        }
+
+        throw lastError ?? NSError(
+            domain: "ChatGPTImportEmbedding",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Embedding generation failed"]
+        )
     }
 
     /// Cancel any ongoing background embedding
     func cancelBackgroundEmbedding() {
         backgroundEmbeddingTask?.cancel()
         backgroundEmbeddingTask = nil
+        deferredEmbeddingRetryTask?.cancel()
+        deferredEmbeddingRetryTask = nil
         isGeneratingEmbeddings = false
     }
 

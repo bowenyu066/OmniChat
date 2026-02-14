@@ -134,6 +134,13 @@ struct OmniChatApp: App {
                         // Preload all API keys into cache
                         KeychainService.shared.preloadKeys()
 
+                        // Recover any imported messages that previously failed/skipped embedding.
+                        await MainActor.run {
+                            ChatGPTImportService.shared.resumeMissingImportedEmbeddings(
+                                modelContext: sharedModelContainer.mainContext
+                            )
+                        }
+
                         // Check for updates if enabled
                         await performStartupUpdateCheck()
                     }

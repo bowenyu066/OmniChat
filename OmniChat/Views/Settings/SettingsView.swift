@@ -22,7 +22,7 @@ struct SettingsView: View {
                     Label("Import", systemImage: "square.and.arrow.down")
                 }
         }
-        .frame(width: 550, height: 450)
+        .frame(width: 760, height: 620)
         .onDisappear {
             // Clear settings auth when leaving settings
             authManager.clearSettingsAuth()
@@ -301,6 +301,7 @@ struct AutoSaveAPIKeyRow: View {
 
 struct GeneralSettingsView: View {
     @AppStorage("default_model") private var defaultModel = "gpt-4o"
+    @AppStorage("openai_reasoning_effort") private var openAIReasoningEffort = OpenAIReasoningEffort.auto.rawValue
     @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
     @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
     @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
@@ -333,6 +334,24 @@ struct GeneralSettingsView: View {
                         Text(model.displayName).tag(model.rawValue)
                     }
                 }
+
+                Picker(
+                    "GPT-5 reasoning effort",
+                    selection: Binding(
+                        get: {
+                            OpenAIReasoningEffort(rawValue: openAIReasoningEffort) ?? .auto
+                        },
+                        set: { openAIReasoningEffort = $0.rawValue }
+                    )
+                ) {
+                    ForEach(OpenAIReasoningEffort.allCases) { effort in
+                        Text(effort.displayName).tag(effort)
+                    }
+                }
+
+                Text("Applies to GPT-5, GPT-5.1, GPT-5.2, GPT-5.2-pro. Auto means no explicit effort parameter is sent.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Appearance") {
@@ -407,6 +426,15 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section {
+                ModelPricingTableView()
+            } header: {
+                Text("Model Pricing (USD per 1M tokens)")
+            } footer: {
+                Text("Pricing snapshots from official docs. Exact billing and supported tiers can change; verify before large-scale usage.")
+                    .foregroundStyle(.secondary)
+            }
+
             #if DEBUG
             Section("Debug / Testing") {
                 VStack(alignment: .leading, spacing: 8) {
@@ -441,6 +469,98 @@ struct GeneralSettingsView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+private struct ModelPricingRowData: Identifiable {
+    let id = UUID()
+    let provider: String
+    let model: String
+    let input: String
+    let cachedInput: String
+    let output: String
+    let note: String?
+}
+
+private struct ModelPricingTableView: View {
+    private let rows: [ModelPricingRowData] = [
+        // OpenAI
+        .init(provider: "OpenAI", model: "gpt-5.2-pro", input: "$21.00", cachedInput: "-", output: "$168.00", note: nil),
+        .init(provider: "OpenAI", model: "gpt-5.2", input: "$1.75", cachedInput: "$0.175", output: "$14.00", note: nil),
+        .init(provider: "OpenAI", model: "gpt-5.1", input: "$1.25", cachedInput: "$0.125", output: "$10.00", note: nil),
+        .init(provider: "OpenAI", model: "gpt-5", input: "$1.25", cachedInput: "$0.125", output: "$10.00", note: nil),
+        .init(provider: "OpenAI", model: "gpt-5-mini", input: "$0.25", cachedInput: "$0.025", output: "$2.00", note: nil),
+        .init(provider: "OpenAI", model: "gpt-4.1", input: "$2.00", cachedInput: "$0.50", output: "$8.00", note: nil),
+        .init(provider: "OpenAI", model: "gpt-4o", input: "$2.50", cachedInput: "$1.25", output: "$10.00", note: nil),
+
+        // Anthropic Claude 4.5
+        .init(provider: "Anthropic", model: "claude-opus-4-5", input: "$15.00", cachedInput: "$1.50", output: "$75.00", note: "Cached input shown as cache-hit pricing"),
+        .init(provider: "Anthropic", model: "claude-sonnet-4-5", input: "$3.00", cachedInput: "$0.30", output: "$15.00", note: "Cached input shown as cache-hit pricing"),
+        .init(provider: "Anthropic", model: "claude-haiku-4-5", input: "$0.80", cachedInput: "$0.08", output: "$4.00", note: "Cached input shown as cache-hit pricing"),
+
+        // Gemini 3 preview
+        .init(provider: "Google", model: "gemini-3-pro-preview", input: "$2.00", cachedInput: "$0.20", output: "$12.00", note: "<=200k token tier (text/image/video)"),
+        .init(provider: "Google", model: "gemini-3-flash-preview", input: "$0.50", cachedInput: "$0.05", output: "$3.00", note: "Text/image/video tier")
+    ]
+
+    private var notes: [String] {
+        Array(Set(rows.compactMap(\.note))).sorted()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                GridRow {
+                    Text("Provider").font(.caption).fontWeight(.semibold)
+                    Text("Model").font(.caption).fontWeight(.semibold)
+                    Text("Input").font(.caption).fontWeight(.semibold)
+                    Text("Cached input").font(.caption).fontWeight(.semibold)
+                    Text("Output").font(.caption).fontWeight(.semibold)
+                }
+
+                ForEach(rows) { row in
+                    GridRow {
+                        Text(row.provider).font(.caption)
+                        Text(row.model).font(.caption).textSelection(.enabled)
+                        Text(row.input).font(.caption)
+                        Text(row.cachedInput).font(.caption)
+                        Text(row.output).font(.caption)
+                    }
+                }
+            }
+
+            Text("Sources: OpenAI Pricing, Anthropic Claude Pricing, Google AI Gemini Pricing.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            if !notes.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(notes, id: \.self) { note in
+                        Text("- \(note)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            HStack(spacing: 14) {
+                Button("OpenAI pricing") {
+                    NSWorkspace.shared.open(URL(string: "https://platform.openai.com/docs/pricing")!)
+                }
+                .buttonStyle(.link)
+
+                Button("Anthropic pricing") {
+                    NSWorkspace.shared.open(URL(string: "https://docs.anthropic.com/en/docs/about-claude/pricing")!)
+                }
+                .buttonStyle(.link)
+
+                Button("Gemini pricing") {
+                    NSWorkspace.shared.open(URL(string: "https://ai.google.dev/gemini-api/docs/pricing")!)
+                }
+                .buttonStyle(.link)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

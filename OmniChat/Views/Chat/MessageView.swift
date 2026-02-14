@@ -15,6 +15,9 @@ struct MessageView: View {
     var onBranch: (() -> Void)?
     var onSwitchSibling: ((Message) -> Void)?
     var onEdit: ((String) -> Void)?  // For editing user messages
+    var isContextInspectorVisible: Bool = false
+    var onShowContextInspector: (() -> Void)? = nil
+    var onCloseContextInspector: (() -> Void)? = nil
 
     @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
     @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
@@ -34,6 +37,10 @@ struct MessageView: View {
 
     private var isUser: Bool {
         message.role == .user
+    }
+
+    private var contextSnapshot: ResponseContextSnapshot? {
+        message.contextSnapshot
     }
 
     var body: some View {
@@ -177,8 +184,17 @@ struct MessageView: View {
                         onSwitchModel: { showModelPicker = true },
                         onBranch: onBranch,
                         onSaveToMemory: { showingSaveToMemory = true },
+                        onShowContext: contextSnapshot?.hasAnyContext == true ? onShowContextInspector : nil,
                         isSpeaking: isSpeaking
                     )
+
+                    if isContextInspectorVisible, let contextSnapshot {
+                        ResponseContextInspectorView(
+                            snapshot: contextSnapshot,
+                            onClose: onCloseContextInspector
+                        )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
             }
         }
@@ -265,6 +281,7 @@ struct MessageActionBar: View {
     let onSwitchModel: () -> Void
     let onBranch: (() -> Void)?
     let onSaveToMemory: () -> Void
+    let onShowContext: (() -> Void)?
     let isSpeaking: Bool
 
     var body: some View {
@@ -293,6 +310,12 @@ struct MessageActionBar: View {
                 }
             }
 
+            if let onShowContext = onShowContext {
+                ActionButton(icon: "line.3.horizontal.decrease.circle", tooltip: "Show context used") {
+                    onShowContext()
+                }
+            }
+
             Spacer()
 
             ActionButton(icon: "brain.head.profile", tooltip: "Save to memory") {
@@ -300,6 +323,94 @@ struct MessageActionBar: View {
             }
         }
         .padding(.top, 4)
+    }
+}
+
+private struct ResponseContextInspectorView: View {
+    let snapshot: ResponseContextSnapshot
+    var onClose: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Context Used")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                if let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Close")
+                }
+                Text(snapshot.generatedAt, style: .time)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            if snapshot.includesTimeContext {
+                contextBadge("Current time injected")
+            }
+
+            if !snapshot.memoryItems.isEmpty {
+                contextSection(title: "Memories", count: snapshot.memoryItems.count) {
+                    ForEach(snapshot.memoryItems, id: \.id) { item in
+                        Text("• [\(item.type)] \(item.title)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            if !snapshot.ragItems.isEmpty {
+                contextSection(title: "Past chats", count: snapshot.ragItems.count) {
+                    ForEach(Array(snapshot.ragItems.enumerated()), id: \.offset) { _, item in
+                        Text("• \(item.conversationTitle)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            if !snapshot.workspaceItems.isEmpty {
+                contextSection(title: "Workspace snippets", count: snapshot.workspaceItems.count) {
+                    ForEach(Array(snapshot.workspaceItems.enumerated()), id: \.offset) { _, item in
+                        Text("• \(item.citation)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private func contextSection<Content: View>(title: String, count: Int, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("\(title) (\(count))")
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary.opacity(0.8))
+            content()
+        }
+    }
+
+    private func contextBadge(_ title: String) -> some View {
+        Text(title)
+            .font(.caption2)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.14))
+            .clipShape(Capsule())
     }
 }
 
