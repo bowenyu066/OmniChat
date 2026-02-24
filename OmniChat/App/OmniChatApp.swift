@@ -114,8 +114,6 @@ struct OmniChatApp: App {
     @StateObject private var authManager = AuthManager()
     @StateObject private var updateService = UpdateCheckService.shared
 
-    private static let keychainMigrationKey = "keychain_rebind_migrated_v3"
-
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Conversation.self,
@@ -143,18 +141,8 @@ struct OmniChatApp: App {
                         // Authenticate app if needed (based on startup unlock settings).
                         _ = await authManager.authenticateAppIfNeeded()
 
-                        // Rebind keychain item once under current signing identity.
-                        await migrateKeychainIfNeeded()
-
-                        // Preload all API keys into cache
-                        KeychainService.shared.preloadKeys()
-
-                        // Recover any imported messages that previously failed/skipped embedding.
-                        await MainActor.run {
-                            ChatGPTImportService.shared.resumeMissingImportedEmbeddings(
-                                modelContext: sharedModelContainer.mainContext
-                            )
-                        }
+                        // Do not touch keychain on startup to avoid repeated password prompts.
+                        // Keychain access is now demand-driven (API use / API Keys settings).
 
                         // Check for updates if enabled
                         await performStartupUpdateCheck()
@@ -286,19 +274,6 @@ struct OmniChatApp: App {
 
         // Fall back to default text paste using system action
         NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-    }
-
-    /// Rebind existing keychain item to current signing identity (one-time operation).
-    private func migrateKeychainIfNeeded() async {
-        let hasMigrated = UserDefaults.standard.bool(forKey: Self.keychainMigrationKey)
-        guard !hasMigrated else { return }
-
-        do {
-            try KeychainService.shared.rebindConsolidatedKeychainAccess()
-            UserDefaults.standard.set(true, forKey: Self.keychainMigrationKey)
-        } catch {
-            print("Keychain rebind failed during startup migration: \(error.localizedDescription)")
-        }
     }
 
     /// Check for updates on app startup based on user preferences
