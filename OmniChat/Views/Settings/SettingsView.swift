@@ -384,7 +384,11 @@ struct GeneralSettingsView: View {
     @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
     @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
     @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
-    @State private var retryAttemptsInput = "2"
+    @State private var isRetryEditorPresented = false
+    @State private var retryAttemptsInput = ""
+    @State private var retryEditorError: String?
+    @State private var retrySaveMessage: String?
+    @State private var retrySaveMessageTask: Task<Void, Never>?
 
     private var bubbleColor: Color {
         Color(red: bubbleRed, green: bubbleGreen, blue: bubbleBlue)
@@ -436,30 +440,62 @@ struct GeneralSettingsView: View {
                 HStack(spacing: 10) {
                     Text("Auto retry on failure")
                     Spacer()
-                    TextField("0-5", text: $retryAttemptsInput)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 64)
-                        .multilineTextAlignment(.trailing)
-                        .onSubmit {
-                            commitRetryAttemptsInput()
-                        }
+                    Text("\(streamAutoRetryAttempts)")
+                        .font(.system(.body, design: .rounded).weight(.semibold))
                     Text("times")
                         .foregroundStyle(.secondary)
-                }
-                .onAppear {
-                    retryAttemptsInput = String(streamAutoRetryAttempts)
+                    Button("Edit") {
+                        openRetryEditor()
+                    }
+                    .buttonStyle(.bordered)
+                    .popover(isPresented: $isRetryEditorPresented, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Edit retry attempts")
+                                .font(.headline)
+
+                            TextField("0-5", text: $retryAttemptsInput)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 140)
+                                .onSubmit {
+                                    saveRetryAttempts()
+                                }
+
+                            Text("Enter an integer between 0 and 5.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if let error = retryEditorError {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+
+                            HStack {
+                                Button("Cancel") {
+                                    isRetryEditorPresented = false
+                                }
+                                Spacer()
+                                Button("Save") {
+                                    saveRetryAttempts()
+                                }
+                                .keyboardShortcut(.defaultAction)
+                            }
+                        }
+                        .padding(14)
+                        .frame(width: 280)
+                    }
                 }
                 .onChange(of: streamAutoRetryAttempts) { _, newValue in
                     let clamped = min(max(newValue, 0), 5)
                     if clamped != streamAutoRetryAttempts {
                         streamAutoRetryAttempts = clamped
                     }
-                    if retryAttemptsInput != String(clamped) {
-                        retryAttemptsInput = String(clamped)
-                    }
                 }
-                .onChange(of: retryAttemptsInput) { _, newValue in
-                    handleRetryAttemptsInputChange(newValue)
+
+                if let message = retrySaveMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.green)
                 }
 
                 Text("Retries only when no token has been returned yet. Total attempts = retries + 1.")
@@ -626,39 +662,42 @@ struct GeneralSettingsView: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private func handleRetryAttemptsInputChange(_ newValue: String) {
-        let sanitized = newValue.filter(\.isNumber)
-        if sanitized != newValue {
-            retryAttemptsInput = sanitized
-            return
-        }
-
-        guard !sanitized.isEmpty else { return }
-        guard let value = Int(sanitized) else { return }
-
-        let clamped = min(max(value, 0), 5)
-        if clamped != streamAutoRetryAttempts {
-            streamAutoRetryAttempts = clamped
-        }
-        if String(clamped) != retryAttemptsInput {
-            retryAttemptsInput = String(clamped)
-        }
+    private func openRetryEditor() {
+        retryAttemptsInput = String(streamAutoRetryAttempts)
+        retryEditorError = nil
+        isRetryEditorPresented = true
     }
 
-    private func commitRetryAttemptsInput() {
-        if retryAttemptsInput.isEmpty {
-            retryAttemptsInput = String(streamAutoRetryAttempts)
+    private func saveRetryAttempts() {
+        let trimmed = retryAttemptsInput.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            retryEditorError = "Please enter an integer from 0 to 5."
             return
         }
 
-        guard let value = Int(retryAttemptsInput) else {
-            retryAttemptsInput = String(streamAutoRetryAttempts)
+        guard trimmed.allSatisfy(\.isNumber), let value = Int(trimmed) else {
+            retryEditorError = "Invalid input. Only integers are allowed."
             return
         }
 
-        let clamped = min(max(value, 0), 5)
-        streamAutoRetryAttempts = clamped
-        retryAttemptsInput = String(clamped)
+        guard (0...5).contains(value) else {
+            retryEditorError = "Value out of range. Please enter 0 to 5."
+            return
+        }
+
+        streamAutoRetryAttempts = value
+        retryEditorError = nil
+        isRetryEditorPresented = false
+        retrySaveMessage = "Saved. Auto retry is now \(value)."
+        retrySaveMessageTask?.cancel()
+        retrySaveMessageTask = Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                retrySaveMessage = nil
+            }
+        }
     }
 
     private func normalizeAppUnlockGraceDays() {
