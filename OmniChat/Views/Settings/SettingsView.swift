@@ -40,6 +40,10 @@ struct APIKeysSettingsView: View {
     @State private var isAuthenticated = false
     @State private var isAuthenticating = false
     @State private var authError: String?
+    @State private var keychainIssue: String?
+    @State private var keychainMaintenanceMessage: String?
+    @State private var keychainMaintenanceError: String?
+    @State private var isRebindingKeychain = false
 
     @State private var saveStatus: [AIProvider: SaveStatus] = [:]
 
@@ -133,6 +137,46 @@ struct APIKeysSettingsView: View {
                 Text("Keys are stored securely in your macOS Keychain. Changes are auto-saved.")
                     .foregroundStyle(.secondary)
             }
+
+            Section("Keychain Access") {
+                if let issue = keychainIssue {
+                    Text(issue)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                HStack {
+                    Text("Rebind keychain access to current app signature")
+                    Spacer()
+                    Button {
+                        rebindKeychainAccess()
+                    } label: {
+                        if isRebindingKeychain {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Text("Rebind Keychain Access")
+                        }
+                    }
+                    .disabled(isRebindingKeychain)
+                }
+
+                if let message = keychainMaintenanceMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+
+                if let error = keychainMaintenanceError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                Text("Use this once after signing identity changes to stop repeated Keychain prompts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding()
@@ -167,6 +211,7 @@ struct APIKeysSettingsView: View {
         openAIKey = keychainService.getAPIKey(for: .openAI) ?? ""
         anthropicKey = keychainService.getAPIKey(for: .anthropic) ?? ""
         googleKey = keychainService.getAPIKey(for: .google) ?? ""
+        keychainIssue = keychainService.keychainAccessIssue()
     }
 
     private func saveKey(_ provider: AIProvider, value: String) {
@@ -185,6 +230,7 @@ struct APIKeysSettingsView: View {
 
                 await MainActor.run {
                     saveStatus[provider] = .saved
+                    keychainIssue = keychainService.keychainAccessIssue()
                 }
 
                 // Reset to idle after 2 seconds
@@ -197,6 +243,36 @@ struct APIKeysSettingsView: View {
             } catch {
                 await MainActor.run {
                     saveStatus[provider] = .error(error.localizedDescription)
+                    keychainIssue = keychainService.keychainAccessIssue() ?? error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func rebindKeychainAccess() {
+        isRebindingKeychain = true
+        keychainMaintenanceMessage = nil
+        keychainMaintenanceError = nil
+
+        Task {
+            do {
+                let reboundCount = try keychainService.rebindConsolidatedKeychainAccess()
+                await MainActor.run {
+                    isRebindingKeychain = false
+                    keychainIssue = nil
+                    if reboundCount == 0 {
+                        keychainMaintenanceMessage = "No stored API keys found. Nothing needed."
+                    } else {
+                        keychainMaintenanceMessage = "Keychain access rebound for \(reboundCount) provider key(s)."
+                    }
+                    loadKeys()
+                }
+            } catch {
+                await MainActor.run {
+                    isRebindingKeychain = false
+                    let issue = keychainService.keychainAccessIssue() ?? error.localizedDescription
+                    keychainIssue = issue
+                    keychainMaintenanceError = issue
                 }
             }
         }
@@ -303,6 +379,8 @@ struct GeneralSettingsView: View {
     @AppStorage("default_model") private var defaultModel = "gpt-4o"
     @AppStorage("openai_reasoning_effort") private var openAIReasoningEffort = OpenAIReasoningEffort.auto.rawValue
     @AppStorage("stream_auto_retry_attempts") private var streamAutoRetryAttempts = 2
+    @AppStorage("require_app_unlock_on_launch") private var requireAppUnlockOnLaunch = false
+    @AppStorage("app_unlock_grace_days") private var appUnlockGraceDays = 30
     @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
     @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
     @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
@@ -392,6 +470,21 @@ struct GeneralSettingsView: View {
             Section("Appearance") {
                 ColorPicker("Message bubble color", selection: bubbleColorBinding, supportsOpacity: false)
                 Text("Changes the color of your outgoing message bubbles.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Security") {
+                Toggle("Require authentication on app launch", isOn: $requireAppUnlockOnLaunch)
+
+                Picker("Launch auth grace period", selection: $appUnlockGraceDays) {
+                    Text("1 day").tag(1)
+                    Text("7 days").tag(7)
+                    Text("30 days").tag(30)
+                }
+                .disabled(!requireAppUnlockOnLaunch)
+
+                Text("Default behavior keeps startup friction-free. API Keys still require authentication when accessed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -519,6 +612,12 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear {
+            normalizeAppUnlockGraceDays()
+        }
+        .onChange(of: appUnlockGraceDays) { _, _ in
+            normalizeAppUnlockGraceDays()
+        }
     }
 
     private func formattedDate(_ date: Date) -> String {
@@ -560,6 +659,12 @@ struct GeneralSettingsView: View {
         let clamped = min(max(value, 0), 5)
         streamAutoRetryAttempts = clamped
         retryAttemptsInput = String(clamped)
+    }
+
+    private func normalizeAppUnlockGraceDays() {
+        if ![1, 7, 30].contains(appUnlockGraceDays) {
+            appUnlockGraceDays = 30
+        }
     }
 }
 

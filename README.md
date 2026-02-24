@@ -64,9 +64,21 @@ Create persistent memories (facts, preferences, instructions) that automatically
 ## Security
 
 - API keys stored in macOS Keychain
-- Touch ID / password authentication (once per 30 days)
+- Default behavior: no authentication prompt on app launch
+- API Keys screen requires Touch ID/password authentication (settings-session scoped)
+- Optional launch authentication with configurable grace period (1 / 7 / 30 days)
 - App Sandbox enabled
 - All data stored locally
+
+### Keychain Authorization Stability (Debug + Release)
+
+To avoid repeated local password prompts after rebuilds, keep code signing identity stable:
+
+1. Use the same `DEVELOPMENT_TEAM` for Debug and Release.
+2. For local Debug runs, default is **Sign to Run Locally**; switch to **Apple Development** if you want stable Keychain authorization across rebuilds.
+3. Use Developer ID Application signing for release artifacts.
+
+If signing changes and Keychain access is denied once, open **Settings -> API Keys** and run **Rebind Keychain Access** to re-save keys under the current signature.
 
 ## In-App Updates (Sparkle)
 

@@ -14,6 +14,7 @@ final class KeychainService {
 
     /// Track if keys have been loaded
     private var hasLoaded = false
+    private var lastAccessIssueMessage: String?
 
     private init() {}
 
@@ -39,40 +40,42 @@ final class KeychainService {
         guard !hasLoaded else { return }
         hasLoaded = true
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: consolidatedAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let dictionary = try? JSONDecoder().decode([String: String].self, from: data) else {
-            // No consolidated keys yet - try migrating from old format
-            migrateFromOldFormat()
-            return
+        do {
+            if let dictionary = try readConsolidatedKeys() {
+                keyCache = dictionary
+                lastAccessIssueMessage = nil
+            } else {
+                // No consolidated keys yet - try migrating from old format
+                migrateFromOldFormat()
+                lastAccessIssueMessage = nil
+            }
+        } catch {
+            if let keychainError = error as? KeychainError {
+                lastAccessIssueMessage = keychainError.errorDescription
+            } else {
+                lastAccessIssueMessage = error.localizedDescription
+            }
         }
-
-        // Load all keys into cache at once
-        keyCache = dictionary
     }
 
     /// Save ALL API keys to the consolidated keychain item
     private func saveAllKeys() throws {
         let data = try JSONEncoder().encode(keyCache)
+        try writeConsolidatedKeys(data)
+        lastAccessIssueMessage = nil
+    }
 
+    private func writeConsolidatedKeys(_ data: Data) throws {
         // Delete existing item first
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: consolidatedAccount
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+            throw KeychainError.deleteFailed(deleteStatus)
+        }
 
         // Create new item with all keys
         let query: [String: Any] = [
@@ -88,6 +91,46 @@ final class KeychainService {
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }
+    }
+
+    private func readConsolidatedKeys() throws -> [String: String]? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceName,
+            kSecAttrAccount as String: consolidatedAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        if status == errSecItemNotFound {
+            return nil
+        }
+
+        guard status == errSecSuccess else {
+            if Self.isAuthorizationRelated(status) {
+                throw KeychainError.authorizationChanged(status)
+            }
+            throw KeychainError.readFailed(status)
+        }
+
+        guard let data = result as? Data else {
+            throw KeychainError.readFailed(status)
+        }
+
+        guard let dictionary = try? JSONDecoder().decode([String: String].self, from: data) else {
+            throw KeychainError.invalidData
+        }
+
+        return dictionary
+    }
+
+    private static func isAuthorizationRelated(_ status: OSStatus) -> Bool {
+        status == errSecAuthFailed ||
+        status == errSecInteractionNotAllowed ||
+        status == errSecUserCanceled
     }
 
     // MARK: - Public API
@@ -136,13 +179,61 @@ final class KeychainService {
         loadAllKeys()
     }
 
+    func keychainAccessIssue() -> String? {
+        lastAccessIssueMessage
+    }
+
     /// Clear the cache (use when you want to force re-read from keychain)
     func clearCache() {
         keyCache.removeAll()
         hasLoaded = false
+        lastAccessIssueMessage = nil
     }
 
     // MARK: - Migration from Old Format
+
+    /// Re-save consolidated keychain content under current signing identity.
+    @discardableResult
+    func rebindConsolidatedKeychainAccess() throws -> Int {
+        let snapshot: [String: String]
+        do {
+            if let consolidated = try readConsolidatedKeys() {
+                snapshot = consolidated
+            } else {
+                // Fall back to old format if consolidated item does not exist.
+                snapshot = readOldFormatSnapshot()
+            }
+        } catch {
+            if let keychainError = error as? KeychainError {
+                lastAccessIssueMessage = keychainError.errorDescription
+            }
+            throw error
+        }
+
+        guard !snapshot.isEmpty else {
+            keyCache = [:]
+            hasLoaded = true
+            lastAccessIssueMessage = nil
+            return 0
+        }
+
+        let backupSnapshot = snapshot
+        keyCache = snapshot
+        hasLoaded = true
+
+        do {
+            try saveAllKeys()
+            return snapshot.count
+        } catch {
+            // Keep keys in memory so user can retry without data entry in this session.
+            keyCache = backupSnapshot
+            hasLoaded = true
+            if let keychainError = error as? KeychainError {
+                lastAccessIssueMessage = keychainError.errorDescription
+            }
+            throw error
+        }
+    }
 
     /// Migrate from old individual keychain items to new consolidated format
     func migrateKeysToNewAccessSettings() {
@@ -167,8 +258,27 @@ final class KeychainService {
 
         // Save to new consolidated format if we found any keys
         if foundAnyKey {
-            try? saveAllKeys()
+            do {
+                try saveAllKeys()
+            } catch {
+                if let keychainError = error as? KeychainError {
+                    lastAccessIssueMessage = keychainError.errorDescription
+                }
+            }
         }
+    }
+
+    private func readOldFormatSnapshot() -> [String: String] {
+        let oldKeys = ["openai_api_key", "anthropic_api_key", "google_api_key"]
+        let newKeys: [Key] = [.openAI, .anthropic, .google]
+        var snapshot: [String: String] = [:]
+
+        for (oldKey, newKey) in zip(oldKeys, newKeys) {
+            if let value = getOldFormatKey(account: oldKey), !value.isEmpty {
+                snapshot[newKey.rawValue] = value
+            }
+        }
+        return snapshot
     }
 
     /// Read a key from old individual keychain item format
@@ -205,15 +315,24 @@ final class KeychainService {
 }
 
 enum KeychainError: LocalizedError {
+    case readFailed(OSStatus)
     case saveFailed(OSStatus)
     case deleteFailed(OSStatus)
+    case invalidData
+    case authorizationChanged(OSStatus)
 
     var errorDescription: String? {
         switch self {
+        case .readFailed(let status):
+            return "Failed to read from Keychain: \(status)"
         case .saveFailed(let status):
             return "Failed to save to Keychain: \(status)"
         case .deleteFailed(let status):
             return "Failed to delete from Keychain: \(status)"
+        case .invalidData:
+            return "Stored Keychain data is invalid. Re-enter API keys if this keeps happening."
+        case .authorizationChanged(let status):
+            return "Detected signing/authorization change for Keychain access (\(status)). Please authorize once, then run Rebind Keychain Access in Settings > API Keys."
         }
     }
 }

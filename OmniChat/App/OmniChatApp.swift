@@ -4,20 +4,35 @@ import AppKit
 import LocalAuthentication
 
 final class AuthManager: ObservableObject {
-    private let lastAuthKey = "last_auth_time"
-
-    // 30 days grace period
-    private let graceInterval: TimeInterval = 30 * 24 * 60 * 60
+    private enum DefaultsKeys {
+        static let lastAuthTime = "last_auth_time"
+        static let requireAppUnlockOnLaunch = "require_app_unlock_on_launch"
+        static let appUnlockGraceDays = "app_unlock_grace_days"
+    }
 
     // Session-based auth for settings (valid while settings window is open)
     @Published var isSettingsAuthenticated = false
 
     private var lastAuthTime: Double {
-        get { UserDefaults.standard.double(forKey: lastAuthKey) }
-        set { UserDefaults.standard.set(newValue, forKey: lastAuthKey) }
+        get { UserDefaults.standard.double(forKey: DefaultsKeys.lastAuthTime) }
+        set { UserDefaults.standard.set(newValue, forKey: DefaultsKeys.lastAuthTime) }
+    }
+
+    private var requireAppUnlockOnLaunch: Bool {
+        if UserDefaults.standard.object(forKey: DefaultsKeys.requireAppUnlockOnLaunch) == nil {
+            return false
+        }
+        return UserDefaults.standard.bool(forKey: DefaultsKeys.requireAppUnlockOnLaunch)
+    }
+
+    private var graceInterval: TimeInterval {
+        let configuredDays = UserDefaults.standard.integer(forKey: DefaultsKeys.appUnlockGraceDays)
+        let graceDays = [1, 7, 30].contains(configuredDays) ? configuredDays : 30
+        return TimeInterval(graceDays * 24 * 60 * 60)
     }
 
     var needsAppUnlock: Bool {
+        guard requireAppUnlockOnLaunch else { return false }
         let now = Date().timeIntervalSince1970
         return lastAuthTime == 0 || (now - lastAuthTime) > graceInterval
     }
@@ -26,9 +41,10 @@ final class AuthManager: ObservableObject {
         lastAuthTime = Date().timeIntervalSince1970
     }
 
-    /// Authenticate for app startup - only if 30 days have passed
+    /// Authenticate for app startup based on user settings.
     @MainActor
     func authenticateAppIfNeeded() async -> Bool {
+        guard requireAppUnlockOnLaunch else { return true }
         guard needsAppUnlock else { return true }
 
         do {
@@ -98,7 +114,7 @@ struct OmniChatApp: App {
     @StateObject private var authManager = AuthManager()
     @StateObject private var updateService = UpdateCheckService.shared
 
-    private static let keychainMigrationKey = "keychain_migrated_v2"
+    private static let keychainMigrationKey = "keychain_rebind_migrated_v3"
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -124,11 +140,10 @@ struct OmniChatApp: App {
                 .environmentObject(authManager)
                 .onAppear {
                     Task {
-                        // Authenticate app if needed (30-day grace period)
+                        // Authenticate app if needed (based on startup unlock settings).
                         _ = await authManager.authenticateAppIfNeeded()
 
-                        // Migrate existing keychain items to new access settings (one-time)
-                        // This re-saves keys without requiring user interaction for future reads
+                        // Rebind keychain item once under current signing identity.
                         await migrateKeychainIfNeeded()
 
                         // Preload all API keys into cache
@@ -273,17 +288,17 @@ struct OmniChatApp: App {
         NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
     }
 
-    /// Migrate existing keychain items to new access settings (one-time operation)
-    /// This re-saves keys with kSecAttrAccessibleAfterFirstUnlock so they don't prompt
+    /// Rebind existing keychain item to current signing identity (one-time operation).
     private func migrateKeychainIfNeeded() async {
         let hasMigrated = UserDefaults.standard.bool(forKey: Self.keychainMigrationKey)
         guard !hasMigrated else { return }
 
-        // This will trigger keychain prompts for existing keys, then re-save them
-        // with the new access settings that don't require prompts
-        KeychainService.shared.migrateKeysToNewAccessSettings()
-
-        UserDefaults.standard.set(true, forKey: Self.keychainMigrationKey)
+        do {
+            try KeychainService.shared.rebindConsolidatedKeychainAccess()
+            UserDefaults.standard.set(true, forKey: Self.keychainMigrationKey)
+        } catch {
+            print("Keychain rebind failed during startup migration: \(error.localizedDescription)")
+        }
     }
 
     /// Check for updates on app startup based on user preferences
