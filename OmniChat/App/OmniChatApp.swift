@@ -164,6 +164,14 @@ struct OmniChatApp: App {
                 .keyboardShortcut("s", modifiers: [.command, .control])
             }
 
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task {
+                        await updateService.checkForUpdates(silent: false)
+                    }
+                }
+            }
+
             // Add focus shortcuts in a new menu group
             CommandMenu("Chat") {
                 Button("Focus Message Input") {

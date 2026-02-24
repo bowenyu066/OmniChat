@@ -302,6 +302,7 @@ struct AutoSaveAPIKeyRow: View {
 struct GeneralSettingsView: View {
     @AppStorage("default_model") private var defaultModel = "gpt-4o"
     @AppStorage("openai_reasoning_effort") private var openAIReasoningEffort = OpenAIReasoningEffort.auto.rawValue
+    @AppStorage("stream_auto_retry_attempts") private var streamAutoRetryAttempts = 2
     @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
     @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
     @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
@@ -352,6 +353,14 @@ struct GeneralSettingsView: View {
                 Text("Applies to GPT-5, GPT-5.1, GPT-5.2, GPT-5.2-pro. Auto means no explicit effort parameter is sent.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Stepper(value: $streamAutoRetryAttempts, in: 0...5) {
+                    Text("Auto retry on failure: \(streamAutoRetryAttempts)")
+                }
+
+                Text("Retries only when no token has been returned yet. Total attempts = retries + 1.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Appearance") {
@@ -378,6 +387,23 @@ struct GeneralSettingsView: View {
                     UserDefaults.standard.updateCheckFrequency = newValue
                 }
 
+                if updateService.isInAppUpdaterEnabled {
+                    Label("In-app updates enabled (Sparkle)", systemImage: "checkmark.seal.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+
+                    if let feedURL = updateService.inAppUpdaterFeedURL {
+                        Text("Feed: \(feedURL.absoluteString)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                } else if let issue = updateService.inAppUpdaterIssue {
+                    Text("In-app updater not active: \(issue)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         if let lastCheck = updateService.lastCheckDate {
@@ -390,10 +416,14 @@ struct GeneralSettingsView: View {
                                 .foregroundColor(.secondary)
                         }
 
-                        if let update = updateService.availableUpdate {
+                        if !updateService.isInAppUpdaterEnabled, let update = updateService.availableUpdate {
                             Text("Version \(update.version) is available")
                                 .font(.caption)
                                 .foregroundColor(.green)
+                        } else if updateService.isInAppUpdaterEnabled {
+                            Text("Checks installable updates directly in-app.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
 
@@ -408,13 +438,13 @@ struct GeneralSettingsView: View {
                             ProgressView()
                                 .scaleEffect(0.7)
                         } else {
-                            Text("Check Now")
+                            Text(updateService.isInAppUpdaterEnabled ? "Check Now (In-App)" : "Check Now")
                         }
                     }
                     .disabled(updateService.isChecking)
                 }
 
-                if let update = updateService.availableUpdate {
+                if !updateService.isInAppUpdaterEnabled, let update = updateService.availableUpdate {
                     HStack {
                         Text("Version \(update.version) available")
                             .foregroundColor(.green)

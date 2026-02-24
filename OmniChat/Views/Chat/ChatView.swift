@@ -23,6 +23,7 @@ struct ChatView: View {
     @State private var loadingTimer: Timer?
     @State private var thinkingDurations: [UUID: TimeInterval] = [:]  // messageId -> seconds
     @AppStorage("include_time_context") private var includeTimeContext = true
+    @AppStorage("stream_auto_retry_attempts") private var streamAutoRetryAttempts = 2
     @State private var currentStreamingMessage: Message?
     @State private var showMemoryPanel = true
     @State private var memoryContextConfig = MemoryContextConfig()
@@ -47,6 +48,87 @@ struct ChatView: View {
     }
 
     private let apiServiceFactory = APIServiceFactory()
+
+    // As streamed text grows, slightly lower UI update frequency to avoid expensive full-text relayout.
+    private func streamUIUpdateInterval(for streamedChars: Int) -> TimeInterval {
+        switch streamedChars {
+        case 0..<3_000:
+            return 0.05
+        case 3_000..<8_000:
+            return 0.07
+        case 8_000..<16_000:
+            return 0.1
+        default:
+            return 0.14
+        }
+    }
+
+    private var totalStreamAttempts: Int {
+        // retries(0...5) + first attempt
+        max(1, min(6, streamAutoRetryAttempts + 1))
+    }
+
+    private func shouldRetryStreamError(
+        _ error: Error,
+        failedAttempt: Int,
+        totalAttempts: Int,
+        receivedAnyChunk: Bool
+    ) -> Bool {
+        guard failedAttempt < totalAttempts else { return false }
+        guard !receivedAnyChunk else { return false } // avoid restarting after partial visible output
+        guard !(error is CancellationError) else { return false }
+
+        if let apiError = error as? APIServiceError {
+            switch apiError {
+            case .invalidAPIKey:
+                return false
+            case .rateLimited:
+                return true
+            case .networkError:
+                return true
+            case .streamingError:
+                return true
+            case .invalidResponse:
+                return true
+            case .serverError(let statusCode, _):
+                if statusCode == 408 || statusCode == 409 || statusCode == 425 || statusCode == 429 {
+                    return true
+                }
+                return (500...599).contains(statusCode)
+            case .decodingError:
+                return false
+            }
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost,
+                    .dnsLookupFailed, .notConnectedToInternet, .internationalRoamingOff, .callIsActive:
+                return true
+            default:
+                return false
+            }
+        }
+
+        return false
+    }
+
+    private func retryDelayNanos(forFailedAttempt failedAttempt: Int, error: Error) -> UInt64 {
+        let baseDelay: Double
+        if case APIServiceError.rateLimited = error {
+            baseDelay = 1.8
+        } else {
+            baseDelay = 0.8
+        }
+        let factor = min(pow(2.0, Double(max(failedAttempt - 1, 0))), 8.0)
+        let seconds = min(baseDelay * factor, 8.0)
+        return UInt64(seconds * 1_000_000_000)
+    }
+
+    private func retryStatusMessage(failedAttempt: Int, totalAttempts: Int, error: Error) -> String {
+        let nextAttempt = failedAttempt + 1
+        return "Request failed (\(error.localizedDescription)). Retrying \(nextAttempt)/\(totalAttempts)..."
+    }
 
     var body: some View {
         HSplitView {
@@ -542,42 +624,92 @@ struct ChatView: View {
                 chatMessages.insert(ChatMessage(role: .system, content: promptBuild.prompt), at: 0)
             }
 
-            let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
-            var contentBuffer = ""
+            let maxAttempts = totalStreamAttempts
             var firstTokenAt: Date?
 
-            do {
-                for try await chunk in stream {
-                    if firstTokenAt == nil {
-                        firstTokenAt = Date()
-                        let thinkingSeconds = loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-                        await MainActor.run {
-                            stopLoading()
-                            thinkingDurations[assistantMessage.id] = thinkingSeconds
+            for attempt in 1...maxAttempts {
+                var contentParts: [String] = []
+                var streamedChars = 0
+                var pendingUIChunk = ""
+                var lastUIUpdateTime = Date()
+                var receivedAnyChunk = false
+
+                do {
+                    let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
+                    for try await chunk in stream {
+                        receivedAnyChunk = true
+                        if firstTokenAt == nil {
+                            firstTokenAt = Date()
+                            let thinkingSeconds = loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                            await MainActor.run {
+                                stopLoading()
+                                thinkingDurations[assistantMessage.id] = thinkingSeconds
+                            }
+                        }
+                        contentParts.append(chunk)
+                        streamedChars += chunk.count
+                        pendingUIChunk += chunk
+
+                        let now = Date()
+                        if now.timeIntervalSince(lastUIUpdateTime) >= streamUIUpdateInterval(for: streamedChars) {
+                            lastUIUpdateTime = now
+                            let delta = pendingUIChunk
+                            pendingUIChunk.removeAll(keepingCapacity: true)
+                            await MainActor.run {
+                                streamingContent += delta
+                            }
                         }
                     }
-                    contentBuffer += chunk
-                    await MainActor.run {
-                        streamingContent = contentBuffer
-                    }
-                }
 
-                await MainActor.run {
-                    assistantMessage.content = contentBuffer
-                    streamingContent = ""
-                    currentStreamingMessage = nil
-                    refreshSortedMessages()
-                    conversation.updatedAt = Date()
-                }
-            } catch {
-                await MainActor.run {
-                    if assistantMessage.content.isEmpty {
-                        assistantMessage.content = "⚠️ Error: \(error.localizedDescription)"
+                    if !pendingUIChunk.isEmpty {
+                        let tail = pendingUIChunk
+                        await MainActor.run {
+                            streamingContent += tail
+                        }
                     }
-                    errorMessage = error.localizedDescription
-                    stopLoading()
-                    currentStreamingMessage = nil
-                    refreshSortedMessages()
+
+                    let finalContent = contentParts.joined()
+                    await MainActor.run {
+                        errorMessage = nil
+                        assistantMessage.content = finalContent
+                        streamingContent = ""
+                        currentStreamingMessage = nil
+                        refreshSortedMessages()
+                        conversation.updatedAt = Date()
+                    }
+                    return
+                } catch {
+                    if shouldRetryStreamError(
+                        error,
+                        failedAttempt: attempt,
+                        totalAttempts: maxAttempts,
+                        receivedAnyChunk: receivedAnyChunk
+                    ) {
+                        await MainActor.run {
+                            streamingContent = ""
+                            errorMessage = retryStatusMessage(
+                                failedAttempt: attempt,
+                                totalAttempts: maxAttempts,
+                                error: error
+                            )
+                        }
+                        let retryDelay = retryDelayNanos(forFailedAttempt: attempt, error: error)
+                        if retryDelay > 0 {
+                            try? await Task.sleep(nanoseconds: retryDelay)
+                        }
+                        continue
+                    }
+
+                    await MainActor.run {
+                        if assistantMessage.content.isEmpty {
+                            assistantMessage.content = "⚠️ Error: \(error.localizedDescription)"
+                        }
+                        errorMessage = error.localizedDescription
+                        stopLoading()
+                        currentStreamingMessage = nil
+                        refreshSortedMessages()
+                    }
+                    return
                 }
             }
         }
@@ -709,44 +841,86 @@ struct ChatView: View {
                 chatMessages.insert(ChatMessage(role: .system, content: promptBuild.prompt), at: 0)
             }
 
-            do {
-                var contentBuffer = ""
-                var lastUIUpdateTime = Date()
+            let maxAttempts = totalStreamAttempts
 
-                let stream = service.streamMessage(messages: Array(chatMessages), model: modelToUse)
-                for try await chunk in stream {
-                    contentBuffer += chunk
-                    let now = Date()
-                    if now.timeIntervalSince(lastUIUpdateTime) >= 0.05 {
-                        lastUIUpdateTime = now
-                        let bufferSnapshot = contentBuffer
-                        await MainActor.run {
-                            streamingContent = bufferSnapshot
+            for attempt in 1...maxAttempts {
+                var contentParts: [String] = []
+                var streamedChars = 0
+                var pendingUIChunk = ""
+                var lastUIUpdateTime = Date()
+                var receivedAnyChunk = false
+
+                do {
+                    let stream = service.streamMessage(messages: Array(chatMessages), model: modelToUse)
+                    for try await chunk in stream {
+                        receivedAnyChunk = true
+                        contentParts.append(chunk)
+                        streamedChars += chunk.count
+                        pendingUIChunk += chunk
+                        let now = Date()
+                        if now.timeIntervalSince(lastUIUpdateTime) >= streamUIUpdateInterval(for: streamedChars) {
+                            lastUIUpdateTime = now
+                            let delta = pendingUIChunk
+                            pendingUIChunk.removeAll(keepingCapacity: true)
+                            await MainActor.run {
+                                streamingContent += delta
+                            }
                         }
                     }
-                }
 
-                let finalContent = contentBuffer
-                await MainActor.run {
-                    assistantMessage.content = finalContent
-                    streamingContent = ""
-                    conversation.updatedAt = Date()
-                    stopLoading()
-                    currentStreamingMessage = nil
-                }
+                    if !pendingUIChunk.isEmpty {
+                        let tail = pendingUIChunk
+                        await MainActor.run {
+                            streamingContent += tail
+                        }
+                    }
 
-                // Background: Generate embeddings and summary for this exchange
-                if let userMessage = userMessage {
-                    await generateEmbeddingsAndSummary(
-                        userMessage: userMessage,
-                        assistantMessage: assistantMessage
-                    )
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    stopLoading()
-                    currentStreamingMessage = nil
+                    let finalContent = contentParts.joined()
+                    await MainActor.run {
+                        errorMessage = nil
+                        assistantMessage.content = finalContent
+                        streamingContent = ""
+                        conversation.updatedAt = Date()
+                        stopLoading()
+                        currentStreamingMessage = nil
+                    }
+
+                    // Background: Generate embeddings and summary for this exchange
+                    if let userMessage = userMessage {
+                        await generateEmbeddingsAndSummary(
+                            userMessage: userMessage,
+                            assistantMessage: assistantMessage
+                        )
+                    }
+                    return
+                } catch {
+                    if shouldRetryStreamError(
+                        error,
+                        failedAttempt: attempt,
+                        totalAttempts: maxAttempts,
+                        receivedAnyChunk: receivedAnyChunk
+                    ) {
+                        await MainActor.run {
+                            streamingContent = ""
+                            errorMessage = retryStatusMessage(
+                                failedAttempt: attempt,
+                                totalAttempts: maxAttempts,
+                                error: error
+                            )
+                        }
+                        let retryDelay = retryDelayNanos(forFailedAttempt: attempt, error: error)
+                        if retryDelay > 0 {
+                            try? await Task.sleep(nanoseconds: retryDelay)
+                        }
+                        continue
+                    }
+
+                    await MainActor.run {
+                        errorMessage = error.localizedDescription
+                        stopLoading()
+                        currentStreamingMessage = nil
+                    }
+                    return
                 }
             }
         }
@@ -907,8 +1081,7 @@ struct ChatView: View {
                 let streamID = assistantMessage.id
                 let streamStartedAt = Date()
                 var firstTokenAt: Date?
-                var chunkCount = 0
-                var chunkBytes = 0
+                let maxAttempts = totalStreamAttempts
 
                 await MainActor.run {
                     activeStreamID = streamID
@@ -919,88 +1092,136 @@ struct ChatView: View {
                     perfLog("PERF_STREAM_START id=\(streamID.uuidString) model=\(modelToUse.rawValue) prompt_chars=\(userContent.count)")
                 }
 
-                let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
-                var lastChunkTime = Date()
-                var slowChunks = 0
-                var maxChunkMs = 0
-                var contentBuffer = ""  // Local buffer for chunks - NO SwiftData updates during streaming!
-                var lastUIUpdateTime = Date()
+                for attempt in 1...maxAttempts {
+                    var lastChunkTime = Date()
+                    var slowChunks = 0
+                    var maxChunkMs = 0
+                    var chunkCount = 0
+                    var chunkBytes = 0
+                    var contentParts: [String] = []  // Keep raw chunks to avoid repeatedly copying giant strings.
+                    var streamedChars = 0
+                    var pendingUIChunk = ""
+                    var lastUIUpdateTime = Date()
+                    var receivedAnyChunk = false
 
-                for try await chunk in stream {
-                    let chunkReceivedAt = Date()
-                    let chunkIntervalMs = Int(chunkReceivedAt.timeIntervalSince(lastChunkTime) * 1000)
-                    maxChunkMs = max(maxChunkMs, chunkIntervalMs)
+                    do {
+                        let stream = service.streamMessage(messages: chatMessages, model: modelToUse)
+                        for try await chunk in stream {
+                            receivedAnyChunk = true
+                            let chunkReceivedAt = Date()
+                            let chunkIntervalMs = Int(chunkReceivedAt.timeIntervalSince(lastChunkTime) * 1000)
+                            maxChunkMs = max(maxChunkMs, chunkIntervalMs)
 
-                    if chunkIntervalMs > 500 {
-                        slowChunks += 1
-                        perfLog("PERF_SLOW_CHUNK chunk=\(chunkCount) interval_ms=\(chunkIntervalMs) bytes=\(chunk.utf8.count)")
-                    }
+                            if chunkIntervalMs > 500 {
+                                slowChunks += 1
+                                perfLog("PERF_SLOW_CHUNK chunk=\(chunkCount) interval_ms=\(chunkIntervalMs) bytes=\(chunk.utf8.count)")
+                            }
 
-                    lastChunkTime = chunkReceivedAt
+                            lastChunkTime = chunkReceivedAt
 
-                    if firstTokenAt == nil {
-                        firstTokenAt = Date()
-                        // Stop the loading spinner and record thinking duration
-                        let thinkingSeconds = loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
-                        await MainActor.run {
-                            stopLoading()
-                            thinkingDurations[assistantMessage.id] = thinkingSeconds
-                        }
-                    }
-                    chunkCount += 1
-                    chunkBytes += chunk.utf8.count
-                    contentBuffer += chunk
+                            if firstTokenAt == nil {
+                                firstTokenAt = Date()
+                                // Stop the loading spinner and record thinking duration
+                                let thinkingSeconds = loadingStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                                await MainActor.run {
+                                    stopLoading()
+                                    thinkingDurations[assistantMessage.id] = thinkingSeconds
+                                }
+                            }
+                            chunkCount += 1
+                            chunkBytes += chunk.utf8.count
+                            contentParts.append(chunk)
+                            streamedChars += chunk.count
+                            pendingUIChunk += chunk
 
-                    // Throttle UI updates to every 50ms instead of per-chunk
-                    // This dramatically reduces MainActor hops and SwiftUI re-renders
-                    let timeSinceLastUpdate = chunkReceivedAt.timeIntervalSince(lastUIUpdateTime)
-                    if timeSinceLastUpdate >= 0.05 {
-                        lastUIUpdateTime = chunkReceivedAt
-                        let bufferSnapshot = contentBuffer
-                        await MainActor.run {
-                            streamingContent = bufferSnapshot  // Update @State, NOT SwiftData
-                            if activeStreamID == streamID {
-                                activeStreamUIUpdates += 1
+                            // Throttle UI updates (adaptive interval) instead of per-chunk
+                            // to reduce MainActor hops and large-text relayout overhead.
+                            let timeSinceLastUpdate = chunkReceivedAt.timeIntervalSince(lastUIUpdateTime)
+                            if timeSinceLastUpdate >= streamUIUpdateInterval(for: streamedChars) {
+                                lastUIUpdateTime = chunkReceivedAt
+                                let delta = pendingUIChunk
+                                pendingUIChunk.removeAll(keepingCapacity: true)
+                                await MainActor.run {
+                                    streamingContent += delta  // Append only new text to avoid full-buffer copies
+                                    if activeStreamID == streamID {
+                                        activeStreamUIUpdates += 1
+                                    }
+                                }
                             }
                         }
+
+                        if !pendingUIChunk.isEmpty {
+                            let tail = pendingUIChunk
+                            await MainActor.run {
+                                streamingContent += tail
+                                if activeStreamID == streamID {
+                                    activeStreamUIUpdates += 1
+                                }
+                            }
+                        }
+
+                        // Final update with complete content
+                        let finalContent = contentParts.joined()
+                        await MainActor.run {
+                            let totalMs = Int(Date().timeIntervalSince(streamStartedAt) * 1000)
+                            let firstTokenMs = firstTokenAt.map { Int($0.timeIntervalSince(streamStartedAt) * 1000) } ?? -1
+                            let uiUpdates = activeStreamID == streamID ? activeStreamUIUpdates : 0
+                            let scrollEvents = activeStreamID == streamID ? activeStreamScrollEvents : 0
+                            perfLog(
+                                "PERF_STREAM_END id=\(streamID.uuidString) total_ms=\(totalMs) first_token_ms=\(firstTokenMs) " +
+                                "attempt=\(attempt)/\(maxAttempts) chunks=\(chunkCount) chunk_bytes=\(chunkBytes) final_chars=\(finalContent.count) " +
+                                "ui_updates=\(uiUpdates) scroll_events=\(scrollEvents) slow_chunks=\(slowChunks) max_chunk_ms=\(maxChunkMs)"
+                            )
+
+                            // NOW update SwiftData - only once at the end!
+                            errorMessage = nil
+                            assistantMessage.content = finalContent
+                            streamingContent = ""
+
+                            if activeStreamID == streamID {
+                                activeStreamID = nil
+                                activeStreamScrollEvents = 0
+                                activeStreamUIUpdates = 0
+                            }
+
+                            conversation.updatedAt = Date()
+                            stopLoading()
+                            currentStreamingMessage = nil
+                            // Trigger title generation from full context (user + assistant)
+                            conversation.generateTitleFromContextAsync()
+                        }
+
+                        // Background: Generate embeddings and summary for this exchange
+                        await generateEmbeddingsAndSummary(
+                            userMessage: userMessage,
+                            assistantMessage: assistantMessage
+                        )
+                        return
+                    } catch {
+                        if shouldRetryStreamError(
+                            error,
+                            failedAttempt: attempt,
+                            totalAttempts: maxAttempts,
+                            receivedAnyChunk: receivedAnyChunk
+                        ) {
+                            perfLog("PERF_STREAM_RETRY id=\(streamID.uuidString) attempt=\(attempt + 1)/\(maxAttempts) error=\(error.localizedDescription)")
+                            await MainActor.run {
+                                streamingContent = ""
+                                errorMessage = retryStatusMessage(
+                                    failedAttempt: attempt,
+                                    totalAttempts: maxAttempts,
+                                    error: error
+                                )
+                            }
+                            let retryDelay = retryDelayNanos(forFailedAttempt: attempt, error: error)
+                            if retryDelay > 0 {
+                                try? await Task.sleep(nanoseconds: retryDelay)
+                            }
+                            continue
+                        }
+                        throw error
                     }
                 }
-
-                // Final update with complete content
-                let finalContent = contentBuffer
-                await MainActor.run {
-                    let totalMs = Int(Date().timeIntervalSince(streamStartedAt) * 1000)
-                    let firstTokenMs = firstTokenAt.map { Int($0.timeIntervalSince(streamStartedAt) * 1000) } ?? -1
-                    let uiUpdates = activeStreamID == streamID ? activeStreamUIUpdates : 0
-                    let scrollEvents = activeStreamID == streamID ? activeStreamScrollEvents : 0
-                    perfLog(
-                        "PERF_STREAM_END id=\(streamID.uuidString) total_ms=\(totalMs) first_token_ms=\(firstTokenMs) " +
-                        "chunks=\(chunkCount) chunk_bytes=\(chunkBytes) final_chars=\(finalContent.count) " +
-                        "ui_updates=\(uiUpdates) scroll_events=\(scrollEvents) slow_chunks=\(slowChunks) max_chunk_ms=\(maxChunkMs)"
-                    )
-
-                    // NOW update SwiftData - only once at the end!
-                    assistantMessage.content = finalContent
-                    streamingContent = ""
-
-                    if activeStreamID == streamID {
-                        activeStreamID = nil
-                        activeStreamScrollEvents = 0
-                        activeStreamUIUpdates = 0
-                    }
-
-                    conversation.updatedAt = Date()
-                    stopLoading()
-                    currentStreamingMessage = nil
-                    // Trigger title generation from full context (user + assistant)
-                    conversation.generateTitleFromContextAsync()
-                }
-
-                // Background: Generate embeddings and summary for this exchange
-                await generateEmbeddingsAndSummary(
-                    userMessage: userMessage,
-                    assistantMessage: assistantMessage
-                )
             } catch {
                 await MainActor.run {
                     if let streamID = activeStreamID {

@@ -68,6 +68,29 @@ Create persistent memories (facts, preferences, instructions) that automatically
 - App Sandbox enabled
 - All data stored locally
 
+## In-App Updates (Sparkle)
+
+OmniChat supports industry-standard in-app updates via [Sparkle](https://sparkle-project.org/) (the same updater used by many non-App-Store macOS apps).
+
+To enable secure in-app updates in production:
+
+1. Sign builds with your **Developer ID Application** certificate (not "Sign to Run Locally").
+2. Notarize and staple the app for each release.
+3. Set these app metadata keys:
+   - `SUFeedURL`: URL to your `appcast.xml`
+   - `SUPublicEDKey`: your Sparkle EdDSA public key
+4. Publish signed update archives and update the appcast.
+
+Generate/update `appcast.xml` for a release with:
+
+```bash
+./scripts/update_appcast.sh v0.4.0-beta ~/Downloads/OmniChat-v0.4.0-beta.dmg omnichat
+```
+
+This script signs the DMG with Sparkle (`sign_update`) and writes a valid appcast entry.
+
+If Sparkle is not fully configured, OmniChat automatically falls back to manual GitHub update notifications.
+
 ## License
 
 MIT License

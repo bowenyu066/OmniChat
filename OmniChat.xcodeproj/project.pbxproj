@@ -32,22 +32,19 @@
 		A100001A /* AttachmentPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001A /* AttachmentPreviewView.swift */; };
 		A100001B /* AttachmentDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001B /* AttachmentDisplayView.swift */; };
 		A100001C /* TitleGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001C /* TitleGenerationService.swift */; };
-		A1000029 /* DefaultMemoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000029 /* DefaultMemoryService.swift */; };
 		A100001D /* MemoryType.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001D /* MemoryType.swift */; };
 		A100001E /* MemoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* MemoryItem.swift */; };
 		A100001F /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200001F /* Workspace.swift */; };
-		A1000025 /* FileIndexEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025 /* FileIndexEntry.swift */; };
 		A1000020 /* MemoryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020 /* MemoryRow.swift */; };
 		A1000021 /* MemoryFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000021 /* MemoryFilterBar.swift */; };
 		A1000022 /* MemoryPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000022 /* MemoryPanelView.swift */; };
 		A1000023 /* MemoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023 /* MemoryEditorView.swift */; };
 		A1000024 /* ChatMemoryContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024 /* ChatMemoryContextView.swift */; };
+		A1000025 /* FileIndexEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025 /* FileIndexEntry.swift */; };
 		A1000026 /* SecurityScopedBookmarkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026 /* SecurityScopedBookmarkService.swift */; };
 		A1000027 /* FileIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027 /* FileIndexer.swift */; };
 		A1000028 /* FileRetriever.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000028 /* FileRetriever.swift */; };
-		A17B4A5B /* WorkspacePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DFB60D /* WorkspacePanelView.swift */; };
-		A199A2B2 /* WorkspaceCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BADB46 /* WorkspaceCreationView.swift */; };
-		A1C222CC /* WorkspaceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B39E0F /* WorkspaceDetailView.swift */; };
+		A1000029 /* DefaultMemoryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000029 /* DefaultMemoryService.swift */; };
 		A100002A /* EmbeddingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002A /* EmbeddingService.swift */; };
 		A100002B /* SummaryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002B /* SummaryService.swift */; };
 		A100002C /* RAGService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200002C /* RAGService.swift */; };
@@ -60,6 +57,10 @@
 		A1000033 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000033 /* TranscriptionService.swift */; };
 		A1000034 /* AudioRecorderButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000034 /* AudioRecorderButton.swift */; };
 		A1000035 /* ConversationSemanticSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000035 /* ConversationSemanticSearchService.swift */; };
+		A17B4A5B /* WorkspacePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DFB60D /* WorkspacePanelView.swift */; };
+		A199A2B2 /* WorkspaceCreationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2BADB46 /* WorkspaceCreationView.swift */; };
+		A1C222CC /* WorkspaceDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B39E0F /* WorkspaceDetailView.swift */; };
+		DB516E09B96B06459677AB5D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 487C8F95F510494172632E0A /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,22 +91,19 @@
 		A200001A /* AttachmentPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentPreviewView.swift; sourceTree = "<group>"; };
 		A200001B /* AttachmentDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentDisplayView.swift; sourceTree = "<group>"; };
 		A200001C /* TitleGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleGenerationService.swift; sourceTree = "<group>"; };
-		A2000029 /* DefaultMemoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultMemoryService.swift; sourceTree = "<group>"; };
 		A200001D /* MemoryType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryType.swift; sourceTree = "<group>"; };
 		A200001E /* MemoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryItem.swift; sourceTree = "<group>"; };
 		A200001F /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
-		A2000025 /* FileIndexEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIndexEntry.swift; sourceTree = "<group>"; };
 		A2000020 /* MemoryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryRow.swift; sourceTree = "<group>"; };
 		A2000021 /* MemoryFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryFilterBar.swift; sourceTree = "<group>"; };
 		A2000022 /* MemoryPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPanelView.swift; sourceTree = "<group>"; };
 		A2000023 /* MemoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryEditorView.swift; sourceTree = "<group>"; };
 		A2000024 /* ChatMemoryContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMemoryContextView.swift; sourceTree = "<group>"; };
+		A2000025 /* FileIndexEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIndexEntry.swift; sourceTree = "<group>"; };
 		A2000026 /* SecurityScopedBookmarkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityScopedBookmarkService.swift; sourceTree = "<group>"; };
 		A2000027 /* FileIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIndexer.swift; sourceTree = "<group>"; };
 		A2000028 /* FileRetriever.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileRetriever.swift; sourceTree = "<group>"; };
-		A2DFB60D /* WorkspacePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePanelView.swift; sourceTree = "<group>"; };
-		A2BADB46 /* WorkspaceCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceCreationView.swift; sourceTree = "<group>"; };
-		A2B39E0F /* WorkspaceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDetailView.swift; sourceTree = "<group>"; };
+		A2000029 /* DefaultMemoryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultMemoryService.swift; sourceTree = "<group>"; };
 		A200002A /* EmbeddingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddingService.swift; sourceTree = "<group>"; };
 		A200002B /* SummaryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryService.swift; sourceTree = "<group>"; };
 		A200002C /* RAGService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAGService.swift; sourceTree = "<group>"; };
@@ -118,6 +116,9 @@
 		A2000033 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
 		A2000034 /* AudioRecorderButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderButton.swift; sourceTree = "<group>"; };
 		A2000035 /* ConversationSemanticSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSemanticSearchService.swift; sourceTree = "<group>"; };
+		A2B39E0F /* WorkspaceDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceDetailView.swift; sourceTree = "<group>"; };
+		A2BADB46 /* WorkspaceCreationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceCreationView.swift; sourceTree = "<group>"; };
+		A2DFB60D /* WorkspacePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspacePanelView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,6 +126,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB516E09B96B06459677AB5D /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,6 +322,9 @@
 			dependencies = (
 			);
 			name = OmniChat;
+			packageProductDependencies = (
+				487C8F95F510494172632E0A /* Sparkle */,
+			);
 			productName = OmniChat;
 			productReference = A2000010 /* OmniChat.app */;
 			productType = "com.apple.product-type.application";
@@ -348,6 +353,9 @@
 				Base,
 			);
 			mainGroup = A4000001;
+			packageReferences = (
+				C26FB54FAACD041F1B2912F1 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = A4000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -562,22 +570,19 @@
 				CODE_SIGN_ENTITLEMENTS = OmniChat/OmniChat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 40030;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = OmniChat;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OmniChat uses the microphone for voice-to-text input.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OmniChat/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.4.0-beta;
+				MARKETING_VERSION = "0.4.0-beta";
 				PRODUCT_BUNDLE_IDENTIFIER = com.omnichat.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -594,22 +599,19 @@
 				CODE_SIGN_ENTITLEMENTS = OmniChat/OmniChat.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 40030;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = OmniChat;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "OmniChat uses the microphone for voice-to-text input.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OmniChat/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.4.0-beta;
+				MARKETING_VERSION = "0.4.0-beta";
 				PRODUCT_BUNDLE_IDENTIFIER = com.omnichat.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -639,6 +641,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C26FB54FAACD041F1B2912F1 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		487C8F95F510494172632E0A /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C26FB54FAACD041F1B2912F1 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A7000001 /* Project object */;
 }

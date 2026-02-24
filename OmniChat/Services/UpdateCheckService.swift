@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Sparkle)
+import Sparkle
+#endif
 
 // MARK: - Update Models
 
@@ -155,10 +158,81 @@ extension UserDefaults {
 // MARK: - Update Check Service
 
 @MainActor
+final class SparkleUpdateBridge: NSObject {
+    static let shared = SparkleUpdateBridge()
+
+    private(set) var configurationIssue: String?
+
+    #if canImport(Sparkle)
+    private var updaterController: SPUStandardUpdaterController?
+    #endif
+
+    var feedURL: URL? {
+        guard let string = Self.infoString("SUFeedURL") else { return nil }
+        return URL(string: string)
+    }
+
+    var isReady: Bool {
+        #if canImport(Sparkle)
+        return updaterController != nil
+        #else
+        return false
+        #endif
+    }
+
+    private override init() {
+        super.init()
+        configureIfPossible()
+    }
+
+    func checkForUpdates(userInitiated: Bool) {
+        #if canImport(Sparkle)
+        guard let updater = updaterController?.updater else { return }
+        if userInitiated {
+            updater.checkForUpdates()
+        } else {
+            updater.checkForUpdatesInBackground()
+        }
+        #endif
+    }
+
+    private func configureIfPossible() {
+        #if canImport(Sparkle)
+        guard let feedURL = Self.infoString("SUFeedURL"), !feedURL.isEmpty else {
+            configurationIssue = "Missing SUFeedURL in app metadata."
+            return
+        }
+        guard let publicKey = Self.infoString("SUPublicEDKey"), !publicKey.isEmpty else {
+            configurationIssue = "Missing SUPublicEDKey in app metadata."
+            return
+        }
+
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
+        configurationIssue = nil
+        #else
+        configurationIssue = "Sparkle framework not linked."
+        #endif
+    }
+
+    private static func infoString(_ key: String) -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+@MainActor
 final class UpdateCheckService: ObservableObject {
     static let shared = UpdateCheckService()
 
     private let githubReleasesURL = "https://api.github.com/repos/bowenyu066/OmniChat/releases?per_page=20"
+    private let sparkleBridge = SparkleUpdateBridge.shared
 
     @Published var availableUpdate: AppUpdateInfo?
     @Published var isChecking: Bool = false
@@ -168,6 +242,18 @@ final class UpdateCheckService: ObservableObject {
         self.lastCheckDate = UserDefaults.standard.lastUpdateCheckDate
     }
 
+    var isInAppUpdaterEnabled: Bool {
+        sparkleBridge.isReady
+    }
+
+    var inAppUpdaterIssue: String? {
+        sparkleBridge.configurationIssue
+    }
+
+    var inAppUpdaterFeedURL: URL? {
+        sparkleBridge.feedURL
+    }
+
     /// Check for updates (silent: true = no error alerts shown)
     func checkForUpdates(silent: Bool = false) async {
         guard !isChecking else { return }
@@ -175,6 +261,16 @@ final class UpdateCheckService: ObservableObject {
         isChecking = true
         defer { isChecking = false }
 
+        // Preferred path: Sparkle in-app updater.
+        if sparkleBridge.isReady {
+            lastCheckDate = Date()
+            UserDefaults.standard.lastUpdateCheckDate = lastCheckDate
+            availableUpdate = nil
+            sparkleBridge.checkForUpdates(userInitiated: !silent)
+            return
+        }
+
+        // Fallback path: legacy GitHub release polling + manual download banner.
         do {
             // Compare with current version
             guard let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {

@@ -6,6 +6,15 @@ final class GoogleAIService: APIServiceProtocol {
 
     private let keychainService: KeychainService
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
+    private static let requestTimeout: TimeInterval = 600
+    private static let resourceTimeout: TimeInterval = 1800
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = requestTimeout
+        config.timeoutIntervalForResource = resourceTimeout
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
 
     init(keychainService: KeychainService = .shared) {
         self.keychainService = keychainService
@@ -23,7 +32,7 @@ final class GoogleAIService: APIServiceProtocol {
 
         let request = try buildRequest(messages: messages, model: model, apiKey: apiKey, stream: false)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIServiceError.invalidResponse
@@ -55,11 +64,15 @@ final class GoogleAIService: APIServiceProtocol {
                 throw APIServiceError.invalidResponse
             }
 
-            guard let part = content.parts.first else {
+            let text = content.parts
+                .compactMap(\.text)
+                .joined()
+
+            guard !text.isEmpty else {
                 throw APIServiceError.invalidResponse
             }
 
-            return part.text
+            return text
         } catch {
             throw APIServiceError.decodingError(error)
         }
@@ -76,7 +89,7 @@ final class GoogleAIService: APIServiceProtocol {
 
                     let request = try self.buildRequest(messages: messages, model: model, apiKey: apiKey, stream: true)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await Self.session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         continuation.finish(throwing: APIServiceError.invalidResponse)
@@ -98,48 +111,44 @@ final class GoogleAIService: APIServiceProtocol {
                         return
                     }
 
-                    // Google's streaming format is newline-delimited JSON
-                    var buffer = ""
-
                     for try await line in bytes.lines {
-                        // Skip empty lines
-                        if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.isEmpty || trimmed.hasPrefix("event:") {
                             continue
                         }
 
-                        // Handle SSE format or raw JSON
-                        var jsonLine = line
-                        if line.hasPrefix("data: ") {
-                            jsonLine = String(line.dropFirst(6))
+                        var payload = trimmed
+                        if payload.hasPrefix("data:") {
+                            payload = payload.dropFirst(5).trimmingCharacters(in: .whitespaces)
                         }
 
-                        // Skip [DONE] marker
-                        if jsonLine == "[DONE]" {
+                        if payload.isEmpty {
+                            continue
+                        }
+
+                        if payload == "[DONE]" {
                             break
                         }
 
-                        // Handle chunked JSON (may come in multiple pieces)
-                        buffer += jsonLine
+                        guard let data = payload.data(using: .utf8) else { continue }
 
-                        // Try to parse the buffer
-                        if let data = buffer.data(using: .utf8) {
-                            do {
-                                let streamResponse = try JSONDecoder().decode(GeminiStreamResponse.self, from: data)
+                        let streamResponse: GeminiStreamResponse
+                        do {
+                            streamResponse = try JSONDecoder().decode(GeminiStreamResponse.self, from: data)
+                        } catch {
+                            continue
+                        }
 
-                                // Extract text from the response
-                                if let candidate = streamResponse.candidates?.first,
-                                   let part = candidate.content?.parts.first {
-                                    continuation.yield(part.text)
-                                }
+                        for candidate in streamResponse.candidates ?? [] {
+                            let text = candidate.content?.parts
+                                .compactMap(\.text)
+                                .joined() ?? ""
+                            if !text.isEmpty {
+                                continuation.yield(text)
+                            }
 
-                                // Clear buffer on successful parse
-                                buffer = ""
-                            } catch {
-                                // JSON might be incomplete, continue buffering
-                                // But if buffer is getting too large, try alternative parsing
-                                if buffer.count > 10000 {
-                                    buffer = ""
-                                }
+                            if candidate.finishReason == "MAX_TOKENS" {
+                                continuation.yield("\n\n[Response truncated at Gemini output token limit]")
                             }
                         }
                     }
@@ -164,6 +173,7 @@ final class GoogleAIService: APIServiceProtocol {
         }
 
         var request = URLRequest(url: url)
+        request.timeoutInterval = Self.requestTimeout
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         // API key goes in header, not URL
@@ -177,8 +187,9 @@ final class GoogleAIService: APIServiceProtocol {
         let geminiContents = convertToGeminiFormat(messages: messages)
 
         // Configure thinking level for Gemini 3 models
+        let maxOutputTokens = model == .gemini3ProPreview ? 16384 : 8192
         var generationConfig: [String: Any] = [
-            "maxOutputTokens": 4096
+            "maxOutputTokens": maxOutputTokens
         ]
 
         // Add thinking config for Gemini 3 models
@@ -291,7 +302,7 @@ private struct GeminiContent: Codable {
 }
 
 private struct GeminiPart: Codable {
-    let text: String
+    let text: String?
     let thoughtSignature: String?  // Gemini 3 includes this for thinking mode
 
     enum CodingKeys: String, CodingKey {

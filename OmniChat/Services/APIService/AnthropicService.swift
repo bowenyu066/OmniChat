@@ -7,6 +7,15 @@ final class AnthropicService: APIServiceProtocol {
     private let keychainService: KeychainService
     private let baseURL = "https://api.anthropic.com/v1/messages"
     private let apiVersion = "2023-06-01"  // Standard API version per official docs
+    private static let requestTimeout: TimeInterval = 600
+    private static let resourceTimeout: TimeInterval = 1800
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = requestTimeout
+        config.timeoutIntervalForResource = resourceTimeout
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
 
     init(keychainService: KeychainService = .shared) {
         self.keychainService = keychainService
@@ -24,7 +33,7 @@ final class AnthropicService: APIServiceProtocol {
 
         let request = try buildRequest(messages: messages, model: model, apiKey: apiKey, stream: false)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIServiceError.invalidResponse
@@ -71,7 +80,7 @@ final class AnthropicService: APIServiceProtocol {
 
                     let request = try self.buildRequest(messages: messages, model: model, apiKey: apiKey, stream: true)
 
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await Self.session.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         continuation.finish(throwing: APIServiceError.invalidResponse)
@@ -140,6 +149,7 @@ final class AnthropicService: APIServiceProtocol {
         }
 
         var request = URLRequest(url: url)
+        request.timeoutInterval = Self.requestTimeout
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
