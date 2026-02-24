@@ -306,6 +306,7 @@ struct GeneralSettingsView: View {
     @AppStorage("bubble_color_red") private var bubbleRed: Double = 0.29
     @AppStorage("bubble_color_green") private var bubbleGreen: Double = 0.62
     @AppStorage("bubble_color_blue") private var bubbleBlue: Double = 1.0
+    @State private var retryAttemptsInput = "2"
 
     private var bubbleColor: Color {
         Color(red: bubbleRed, green: bubbleGreen, blue: bubbleBlue)
@@ -354,8 +355,33 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Stepper(value: $streamAutoRetryAttempts, in: 0...5) {
-                    Text("Auto retry on failure: \(streamAutoRetryAttempts)")
+                HStack(spacing: 10) {
+                    Text("Auto retry on failure")
+                    Spacer()
+                    TextField("0-5", text: $retryAttemptsInput)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 64)
+                        .multilineTextAlignment(.trailing)
+                        .onSubmit {
+                            commitRetryAttemptsInput()
+                        }
+                    Text("times")
+                        .foregroundStyle(.secondary)
+                }
+                .onAppear {
+                    retryAttemptsInput = String(streamAutoRetryAttempts)
+                }
+                .onChange(of: streamAutoRetryAttempts) { _, newValue in
+                    let clamped = min(max(newValue, 0), 5)
+                    if clamped != streamAutoRetryAttempts {
+                        streamAutoRetryAttempts = clamped
+                    }
+                    if retryAttemptsInput != String(clamped) {
+                        retryAttemptsInput = String(clamped)
+                    }
+                }
+                .onChange(of: retryAttemptsInput) { _, newValue in
+                    handleRetryAttemptsInputChange(newValue)
                 }
 
                 Text("Retries only when no token has been returned yet. Total attempts = retries + 1.")
@@ -499,6 +525,41 @@ struct GeneralSettingsView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func handleRetryAttemptsInputChange(_ newValue: String) {
+        let sanitized = newValue.filter(\.isNumber)
+        if sanitized != newValue {
+            retryAttemptsInput = sanitized
+            return
+        }
+
+        guard !sanitized.isEmpty else { return }
+        guard let value = Int(sanitized) else { return }
+
+        let clamped = min(max(value, 0), 5)
+        if clamped != streamAutoRetryAttempts {
+            streamAutoRetryAttempts = clamped
+        }
+        if String(clamped) != retryAttemptsInput {
+            retryAttemptsInput = String(clamped)
+        }
+    }
+
+    private func commitRetryAttemptsInput() {
+        if retryAttemptsInput.isEmpty {
+            retryAttemptsInput = String(streamAutoRetryAttempts)
+            return
+        }
+
+        guard let value = Int(retryAttemptsInput) else {
+            retryAttemptsInput = String(streamAutoRetryAttempts)
+            return
+        }
+
+        let clamped = min(max(value, 0), 5)
+        streamAutoRetryAttempts = clamped
+        retryAttemptsInput = String(clamped)
     }
 }
 
