@@ -2,6 +2,27 @@
 
 All notable changes to OmniChat will be documented in this file.
 
+## v0.4.1-beta (2026-02-24) - Keychain Friction Fixes & Settings UX Polish
+
+**Added:**
+- New Security controls in Settings:
+  - `Require authentication on app launch`
+  - `Launch auth grace period` (1 / 7 / 30 days)
+- API Keys maintenance action: **Rebind Keychain Access** for signature/ACL recovery after signing changes
+- Clearer Keychain authorization-change guidance surfaced in-app when access fails
+
+**Improved:**
+- Auto-retry setting UX now uses explicit edit flow (value display + Edit button + Save/Cancel)
+- Auto-retry editor now validates integer input in range `0...5` with immediate error feedback
+- Save confirmation message added after retry setting updates
+
+**Fixed:**
+- Removed startup-time keychain reads/writes that could trigger password prompts on every app launch
+- Startup path now avoids background keychain-dependent tasks until user action/API usage
+- Reduced repeated local keychain authorization interruptions during normal open/send flows
+
+---
+
 ## v0.4.0-beta (2026-02-14) - Adaptive RAG, GPT-5 Controls, and Docs Refresh
 
 **Added:**

@@ -3,13 +3,13 @@
     <channel>
         <title>OmniChat</title>
         <item>
-            <title>0.4.0-beta</title>
-            <pubDate>Sat, 14 Feb 2026 01:56:06 -0500</pubDate>
-            <sparkle:fullReleaseNotesLink>https://github.com/bowenyu066/OmniChat/releases/tag/v0.4.0-beta</sparkle:fullReleaseNotesLink>
-            <sparkle:version>40030</sparkle:version>
-            <sparkle:shortVersionString>0.4.0-beta</sparkle:shortVersionString>
+            <title>0.4.1-beta</title>
+            <pubDate>Tue, 24 Feb 2026 01:29:06 -0500</pubDate>
+            <sparkle:fullReleaseNotesLink>https://github.com/bowenyu066/OmniChat/releases/tag/v0.4.1-beta</sparkle:fullReleaseNotesLink>
+            <sparkle:version>40130</sparkle:version>
+            <sparkle:shortVersionString>0.4.1-beta</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/bowenyu066/OmniChat/releases/download/v0.4.0-beta/OmniChat-v0.4.0-beta.dmg" sparkle:edSignature="jFAsuRHMet1UKH0Mi82dQWaUdoyyIh1URTK9pcdoCDn5S2AebRVPxKywiLxTGLvcTyQmUsXNk1F1pkmZaullAw==" length="5723324" type="application/octet-stream"/>
+            <enclosure url="https://github.com/bowenyu066/OmniChat/releases/download/v0.4.1-beta/OmniChat-v0.4.1-beta.dmg" sparkle:edSignature="F1kDYUzebBUQFTFmFBU3vyPLUk0IIIiNYPHBVlneHQBFd9JeEtAoAsT6TVdG41NHzY/UQAi6CtALl6EXS48iCA==" length="6673662" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
